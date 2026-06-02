@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+
+# Virtual env
+venv/
+.venv/
+
+# Ruff cache
+.ruff_cache/
+
+# Generated 3D models
+uploads/*.glb
+uploads/*.stl
+
+# Environment
+.env

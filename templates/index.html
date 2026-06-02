@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TIJOLOcount - Calculadora 3D de Tijolos</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
+  </head>
+  <body>
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <span class="brand">TIJOLO<span>count</span></span>
+
+      <button id="btn-draw" class="active">Desenhar</button>
+      <button id="btn-rect">Retangulo</button>
+      <button id="btn-select">Selecionar</button>
+      <button id="btn-delete">Apagar</button>
+
+      <span class="sep"></span>
+
+      <button id="btn-cut-door" class="cutout-btn" style="color: #00d4ff">
+        &#x1F6AA; Corte Porta
+      </button>
+      <select id="door-size-select">
+        <option value="0.60">60 cm</option>
+        <option value="0.80" selected>80 cm</option>
+        <option value="0.90">90 cm</option>
+      </select>
+      <button id="btn-cut-window" class="cutout-btn" style="color: #4da6ff">
+        &#x1FA9F; Corte Janela
+      </button>
+      <select id="window-size-select">
+        <option value="1.00" selected>1.00 m</option>
+        <option value="1.20">1.20 m</option>
+        <option value="1.50">1.50 m</option>
+      </select>
+
+      <span class="sep"></span>
+
+      <label>Snap:</label>
+      <select id="snap-select">
+        <option value="0.05" selected>5 cm</option>
+        <option value="0.10">10 cm</option>
+        <option value="0.25">25 cm</option>
+        <option value="0.50">50 cm</option>
+        <option value="1.00">1 m</option>
+      </select>
+
+      <label>Altura:</label>
+      <input
+        type="number"
+        id="wall-height-input"
+        value="2.80"
+        step="0.01"
+        min="0.5"
+      />
+      m
+
+      <span class="sep"></span>
+
+      <label>Camada:</label>
+      <select id="layer-select"></select>
+      <button id="btn-new-layer" title="Nova Camada">+</button>
+      <button id="btn-remove-layer" title="Remover Camada">-</button>
+
+      <span class="sep"></span>
+
+      <label>Tijolo:</label>
+      <select id="brick-type-select">
+        <option value="comum_19x9x9">Comum 19x9x9</option>
+        <option value="bloco_estrutural_19x14x39" selected>
+          Estrutural 19x14x39
+        </option>
+        <option value="bloco_ceramico_9x14x24">Ceramico 9x14x24</option>
+        <option value="tijolo_macico_21x10x5">Macico 21x10x5</option>
+      </select>
+
+      <label>Junta:</label>
+      <input
+        type="number"
+        id="mortar-joint-input"
+        value="1.0"
+        step="0.1"
+        min="0"
+        max="5"
+      />
+      cm
+
+      <label>Posicao:</label>
+      <select id="orientation-select">
+        <option value="deitado">Deitado (frente)</option>
+        <option value="cutelo">De cutelo (lado)</option>
+        <option value="espelho" selected>De espelho</option>
+      </select>
+
+      <span class="sep"></span>
+
+      <button id="btn-clear">Limpar</button>
+      <button id="btn-reset-cam">Reset Cam</button>
+      <button id="btn-save">Salvar</button>
+      <button id="btn-export-svg">SVG</button>
+      <label class="btn-file-label" for="btn-load-file">Abrir</label>
+      <input
+        type="file"
+        id="btn-load-file"
+        accept=".json"
+        style="display: none"
+      />
+      <button id="btn-new-project">Novo</button>
+
+      <span style="flex: 1"></span>
+
+      <span style="font-size: 0.8em; color: #888">
+        Paredes: <strong id="wall-count" style="color: #f0a500">0</strong>
+      </span>
+    </div>
+
+    <!-- Main -->
+    <div class="main">
+      <div class="canvas-panel" id="canvas-panel">
+        <canvas id="floorplan-canvas"></canvas>
+        <div class="canvas-placeholder" id="canvas-placeholder">
+          <div class="icon">&#x1F3D7;</div>
+          <p>
+            Clique para desenhar paredes<br />Scroll = Zoom | Arrastar = Pan
+          </p>
+        </div>
+        <div class="status-bar">
+          <span><strong>X:</strong> <span id="cursor-x">0.00</span> m</span>
+          <span><strong>Z:</strong> <span id="cursor-z">0.00</span> m</span>
+          <span style="margin-left: auto; color: #888" id="status-bar"></span>
+        </div>
+      </div>
+
+      <div class="viewer-panel">
+        <div id="viewer-container"></div>
+        <div class="placeholder" id="viewer-placeholder">
+          <div class="icon">&#x1F3DB;</div>
+          <p>Desenhe as paredes e clique em "Gerar 3D"</p>
+        </div>
+        <div class="legend">
+          <div class="legend-item">
+            <div class="legend-color external"></div>
+            Externa
+          </div>
+          <div class="legend-item">
+            <div class="legend-color internal"></div>
+            Interna
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results Bar -->
+    <div class="results-bar" id="results-bar">
+      <div class="result-item">
+        <span class="label">Area Total</span>
+        <span class="value" id="res-total-area">--</span>
+      </div>
+      <div class="result-item">
+        <span class="label">Externas</span>
+        <span class="value" id="res-ext-area">--</span>
+      </div>
+      <div class="result-item">
+        <span class="label">Argamassa</span>
+        <span class="value" id="res-mortar">--</span>
+      </div>
+      <div class="result-item">
+        <span class="label">Tijolos/m&sup2;</span>
+        <span class="value" id="res-bpm2">--</span>
+      </div>
+      <div class="result-item">
+        <span class="label">Total Tijolos</span>
+        <span class="value highlight" id="res-total-bricks">--</span>
+      </div>
+      <div class="result-spacer"></div>
+      <button id="btn-animate" class="btn-animate" style="display: none">
+        Animar Tijolos
+      </button>
+      <a class="btn-download" id="btn-download-stl" href="#" download>STL</a>
+      <a class="btn-download glb" id="btn-download-gltf" href="#" download
+        >GLB</a
+      >
+    </div>
+
+    <!-- Modal Animacao -->
+    <div class="modal-overlay" id="modal-overlay"></div>
+    <div class="modal" id="anim-modal">
+      <div class="modal-toolbar">
+        <span class="modal-title">Animacao Tijolo por Tijolo</span>
+        <button id="btn-pause">Pausar</button>
+        <button id="btn-close-modal" class="btn-close-modal">&times;</button>
+      </div>
+      <div class="modal-viewer" id="modal-container"></div>
+      <div class="modal-progress" id="modal-progress">
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" id="modal-progress-fill"></div>
+        </div>
+        <span class="progress-text" id="modal-progress-text"
+          >Preparando...</span
+        >
+      </div>
+    </div>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+    <script
+      type="module"
+      src="{{ url_for('static', filename='app.js') }}"
+    ></script>
+  </body>
+</html>
