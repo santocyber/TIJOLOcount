@@ -1,7 +1,15 @@
 import math
 from dataclasses import dataclass, field
 
-from src.config import BRICK_TYPES, BRICK_ORIENTATIONS, MORTAR_DENSITY, WASTE_FACTOR
+from src.config import (
+    BRICK_TYPES,
+    BRICK_ORIENTATIONS,
+    MORTAR_DENSITY,
+    MORTAR_CEMENT_KG,
+    MORTAR_SAND_KG,
+    MORTAR_WATER_L,
+    WASTE_FACTOR,
+)
 
 
 @dataclass
@@ -254,6 +262,23 @@ class BrickCalculator:
         return n * self.mortar_volume_per_brick * MORTAR_DENSITY
 
     @property
+    def total_mortar_m3(self) -> float:
+        """Volume total de argamassa em m³."""
+        return self.total_mortar_kg / MORTAR_DENSITY if MORTAR_DENSITY > 0 else 0
+
+    @property
+    def total_cement_kg(self) -> float:
+        return self.total_mortar_m3 * MORTAR_CEMENT_KG
+
+    @property
+    def total_sand_kg(self) -> float:
+        return self.total_mortar_m3 * MORTAR_SAND_KG
+
+    @property
+    def total_water_l(self) -> float:
+        return self.total_mortar_m3 * MORTAR_WATER_L
+
+    @property
     def summary(self) -> dict:
         walls_info = []
         for w in self.walls:
@@ -292,5 +317,8 @@ class BrickCalculator:
             "posicao": orient_name,
             "junta_argamassa_cm": round(self.mortar_joint * 100, 1),
             "total_argamassa_kg": round(self.total_mortar_kg, 1),
+            "cimento_kg": round(self.total_cement_kg, 1),
+            "areia_kg": round(self.total_sand_kg, 1),
+            "agua_l": round(self.total_water_l, 1),
             "paredes": walls_info,
         }

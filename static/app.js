@@ -21,22 +21,22 @@ scene.background = new THREE.Color(0x111122);
 
 const camera = new THREE.PerspectiveCamera(
   50,
-  viewerEl.clientWidth / Math.max(viewerEl.clientHeight, 1),
+  (viewerEl.clientWidth || 800) / Math.max(viewerEl.clientHeight || 600, 1),
   0.1,
-  80,
+  200,
 );
 camera.position.set(10, 8, 14);
 camera.lookAt(0, 1.5, 0);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(viewerEl.clientWidth, viewerEl.clientHeight);
+renderer.setSize(viewerEl.clientWidth || 800, viewerEl.clientHeight || 600);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 viewerEl.appendChild(renderer.domElement);
 
 function triggerResize() {
-  const w = viewerEl.clientWidth,
-    h = viewerEl.clientHeight;
+  const w = viewerEl.clientWidth || 800,
+    h = viewerEl.clientHeight || 600;
   if (w > 0 && h > 0) {
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
@@ -44,6 +44,31 @@ function triggerResize() {
   }
 }
 triggerResize();
+
+// rAF delayed — garantia apos layout
+requestAnimationFrame(() => {
+  const w = viewerEl.clientWidth,
+    h = viewerEl.clientHeight;
+  if (w > 0 && h > 0) {
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+  }
+});
+
+// ResizeObserver — reage a mudancas de layout
+if (window.ResizeObserver) {
+  new ResizeObserver(() => {
+    const w = viewerEl.clientWidth,
+      h = viewerEl.clientHeight;
+    if (w > 0 && h > 0) {
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    }
+  }).observe(viewerEl);
+}
+
 window.addEventListener("resize", () => {
   const w = viewerEl.clientWidth,
     h = viewerEl.clientHeight;
@@ -54,7 +79,7 @@ window.addEventListener("resize", () => {
   }
 });
 
-const grid = new THREE.GridHelper(16, 16, 0x444466, 0x222244);
+let grid = new THREE.GridHelper(16, 16, 0x444466, 0x222244);
 grid.position.y = 0.005;
 scene.add(grid);
 
@@ -73,9 +98,29 @@ controls.target.set(0, 1.5, 0);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.minDistance = 2;
-controls.maxDistance = 50;
+controls.maxDistance = 100;
 controls.maxPolarAngle = Math.PI / 2.1;
 controls.update();
+
+function frameCameraOnModel(model) {
+  const box = new THREE.Box3().setFromObject(model);
+  if (box.isEmpty()) return;
+  const c = box.getCenter(new THREE.Vector3());
+  const s = box.getSize(new THREE.Vector3());
+  const md = Math.max(s.x, s.y, s.z, 3);
+  controls.target.copy(c);
+  camera.position.set(c.x + md * 0.8, c.y + md * 0.6, c.z + md * 1.1);
+  camera.far = md * 5;
+  camera.updateProjectionMatrix();
+  controls.update();
+
+  // Reposiciona grid sob o modelo
+  const gs = Math.ceil((Math.max(s.x, s.z, 8) * 1.5) / 2) * 2;
+  scene.remove(grid);
+  grid = new THREE.GridHelper(gs, Math.max(16, gs), 0x444466, 0x222244);
+  grid.position.set(c.x, 0.005, c.z);
+  scene.add(grid);
+}
 
 function loadGLB(url, keepCamera = false) {
   const savedTarget = keepCamera ? controls.target.clone() : null;
@@ -94,15 +139,7 @@ function loadGLB(url, keepCamera = false) {
       controls.update();
       return;
     }
-    const box = new THREE.Box3().setFromObject(currentModel);
-    if (!box.isEmpty()) {
-      const c = box.getCenter(new THREE.Vector3());
-      const s = box.getSize(new THREE.Vector3());
-      const md = Math.max(s.x, s.y, s.z, 3);
-      controls.target.copy(c);
-      camera.position.set(c.x + md * 0.8, c.y + md * 0.6, c.z + md * 1.1);
-      controls.update();
-    }
+    frameCameraOnModel(currentModel);
   });
 }
 
@@ -288,6 +325,22 @@ document.getElementById("wall-height-input").addEventListener("change", (e) => {
 // ----- Modal -----
 const modal = document.getElementById("anim-modal");
 
+const modalOnProgress = (cur, total) => {
+  document.getElementById("modal-progress-fill").style.width =
+    ((cur / total) * 100).toFixed(0) + "%";
+  document.getElementById("modal-progress-text").textContent =
+    cur.toLocaleString("pt-BR") +
+    " / " +
+    total.toLocaleString("pt-BR") +
+    " tijolos";
+};
+
+const modalOnComplete = () => {
+  document.getElementById("modal-progress-fill").style.width = "100%";
+  document.getElementById("modal-progress-text").textContent = "Concluido!";
+  document.getElementById("btn-pause").disabled = true;
+};
+
 function openModal() {
   if (!lastBrickPositions.length) return;
   modal.classList.add("active");
@@ -300,22 +353,7 @@ function openModal() {
   document.getElementById("btn-pause").textContent = "Pausar";
   document.getElementById("btn-pause").disabled = false;
   modalAnimator.load(lastBrickPositions, lastBrickDims);
-  modalAnimator.start(
-    (cur, total) => {
-      document.getElementById("modal-progress-fill").style.width =
-        ((cur / total) * 100).toFixed(0) + "%";
-      document.getElementById("modal-progress-text").textContent =
-        cur.toLocaleString("pt-BR") +
-        " / " +
-        total.toLocaleString("pt-BR") +
-        " tijolos";
-    },
-    () => {
-      document.getElementById("modal-progress-fill").style.width = "100%";
-      document.getElementById("modal-progress-text").textContent = "Concluido!";
-      document.getElementById("btn-pause").disabled = true;
-    },
-  );
+  modalAnimator.start(modalOnProgress, modalOnComplete);
 }
 
 function closeModal() {
@@ -345,7 +383,28 @@ document.getElementById("btn-pause").addEventListener("click", () => {
     btn.textContent = "Continuar";
   }
 });
+document.getElementById("btn-repeat").addEventListener("click", () => {
+  if (!modalAnimator) return;
+  modalAnimator.stop();
+  modalAnimator.load(lastBrickPositions, lastBrickDims);
+  document.getElementById("modal-progress-fill").style.width = "0%";
+  document.getElementById("modal-progress-text").textContent = "Preparando...";
+  document.getElementById("btn-pause").textContent = "Pausar";
+  document.getElementById("btn-pause").disabled = false;
+  modalAnimator.start(modalOnProgress, modalOnComplete);
+});
+document.getElementById("speed-select").addEventListener("change", (e) => {
+  if (modalAnimator) modalAnimator.bricksPerFrame = parseFloat(e.target.value);
+});
 document.getElementById("modal-overlay").addEventListener("click", closeModal);
+
+document.getElementById("btn-sun-repeat").addEventListener("click", () => {
+  if (!modalAnimator) return;
+  modalAnimator.startSunCycleOnly(20);
+});
+document.getElementById("sun-dir-select").addEventListener("change", (e) => {
+  if (modalAnimator) modalAnimator.setSunHeading(parseFloat(e.target.value));
+});
 
 // ----- Toolbar -----
 const btnDraw = document.getElementById("btn-draw");
@@ -463,9 +522,13 @@ document.getElementById("btn-clear").addEventListener("click", () => {
   doGenerate();
 });
 document.getElementById("btn-reset-cam").addEventListener("click", () => {
-  controls.target.set(0, 1.5, 0);
-  camera.position.set(10, 8, 14);
-  controls.update();
+  if (currentModel) {
+    frameCameraOnModel(currentModel);
+  } else {
+    controls.target.set(0, 1.5, 0);
+    camera.position.set(10, 8, 14);
+    controls.update();
+  }
 });
 
 // Save/Load/Export
@@ -619,10 +682,17 @@ async function doGenerate() {
       data.area_total_paredes_m2 + " m\u00b2";
     document.getElementById("res-ext-area").textContent =
       data.area_paredes_externas_m2 + " m\u00b2";
-    document.getElementById("res-mortar").textContent =
-      (data.total_argamassa_kg || 0).toLocaleString("pt-BR", {
+    document.getElementById("res-cement").textContent =
+      (data.cimento_kg || 0).toLocaleString("pt-BR", {
         maximumFractionDigits: 1,
       }) + " kg";
+    document.getElementById("res-sand").textContent =
+      (data.areia_kg || 0).toLocaleString("pt-BR", {
+        maximumFractionDigits: 1,
+      }) + " kg";
+    document.getElementById("res-water").textContent =
+      (data.agua_l || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) +
+      " L";
     document.getElementById("res-bpm2").textContent =
       data.tijolos_por_m2 + " un/m\u00b2";
     document.getElementById("res-total-bricks").textContent =

@@ -165,8 +165,16 @@
         <span class="value" id="res-ext-area">--</span>
       </div>
       <div class="result-item">
-        <span class="label">Argamassa</span>
-        <span class="value" id="res-mortar">--</span>
+        <span class="label">Cimento</span>
+        <span class="value" id="res-cement">--</span>
+      </div>
+      <div class="result-item">
+        <span class="label">Areia</span>
+        <span class="value" id="res-sand">--</span>
+      </div>
+      <div class="result-item">
+        <span class="label">Agua</span>
+        <span class="value" id="res-water">--</span>
       </div>
       <div class="result-item">
         <span class="label">Tijolos/m&sup2;</span>
@@ -191,6 +199,27 @@
     <div class="modal" id="anim-modal">
       <div class="modal-toolbar">
         <span class="modal-title">Animacao Tijolo por Tijolo</span>
+        <button id="btn-repeat">Repetir</button>
+        <select id="speed-select">
+          <option value="0.017">Tartaruga</option>
+          <option value="0.1">Muito Muito Lenta</option>
+          <option value="0.5">Muito Lenta</option>
+          <option value="2">Lenta</option>
+          <option value="5" selected>Media</option>
+          <option value="15">Rapida</option>
+          <option value="50">Turbo</option>
+        </select>
+        <button id="btn-sun-repeat" title="Repetir ciclo do sol">&#9728; Repetir</button>
+        <select id="sun-dir-select">
+          <option value="0" selected>Leste &#10142; Oeste</option>
+          <option value="45">Nordeste &#10142; Sudoeste</option>
+          <option value="90">Norte &#10142; Sul</option>
+          <option value="135">Noroeste &#10142; Sudeste</option>
+          <option value="180">Oeste &#10142; Leste</option>
+          <option value="225">Sudoeste &#10142; Nordeste</option>
+          <option value="270">Sul &#10142; Norte</option>
+          <option value="315">Sudeste &#10142; Noroeste</option>
+        </select>
         <button id="btn-pause">Pausar</button>
         <button id="btn-close-modal" class="btn-close-modal">&times;</button>
       </div>

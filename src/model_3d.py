@@ -58,20 +58,35 @@ class Wall3DBuilder:
         # Recortes (em coordenadas locais: centro na origem, +X ao longo da parede)
         half_len = length / 2
         half_h = height / 2
+        _EPS = 1e-4  # evita faces coplanares que confundem boolean engines
         for cutout in wall.cutouts:
+            # Valida se o recorte cabe na parede (pre-grid check)
+            if cutout.position + cutout.width > length or cutout.position < -_EPS:
+                continue
+            if cutout.elevation + cutout.height > height or cutout.elevation < -_EPS:
+                continue
+
             cut_box = trimesh.creation.box(
-                extents=(cutout.width, cutout.height, thickness * 3)
+                extents=(cutout.width + _EPS, cutout.height + _EPS, thickness * 3)
             )
             cut_x = cutout.position + cutout.width / 2 - half_len
             cut_y = cutout.elevation + cutout.height / 2 - half_h
             cut_box.apply_translation((cut_x, cut_y, 0))
-            try:
-                box = box.difference(cut_box, engine="blender")
-            except Exception:
+
+            # Tenta engines em ordem: manifold (mais confiavel), blender, default
+            result = None
+            for engine in ("manifold", "blender", None):
                 try:
-                    box = box.difference(cut_box)
+                    result = box.difference(cut_box, engine=engine)
                 except Exception:
-                    pass
+                    continue
+                if result is not None and len(result.faces) > 0 and not result.is_empty:
+                    break
+                result = None  # engine retornou mesh vazio — tenta proximo
+
+            if result is not None and len(result.faces) > 0 and not result.is_empty:
+                box = result
+            # else: mantem a parede original (sem o recorte), melhor que sumir
 
         # Rotaciona na origem
         matrix = trimesh.transformations.rotation_matrix(theta, (0, 1, 0))

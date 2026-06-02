@@ -30,6 +30,11 @@ DEFAULT_MORTAR_JOINT = 0.01  # 1 cm em metros
 WASTE_FACTOR = 0.10  # 10% de perda
 MORTAR_DENSITY = 2000  # kg/m³ (densidade media argamassa cimento-areia)
 
+# Traço padrão 1:3 (alvenaria) — kg por m³ de argamassa
+MORTAR_CEMENT_KG = 350  # kg de cimento por m³
+MORTAR_SAND_KG = 1200  # kg de areia por m³
+MORTAR_WATER_L = 175  # litros de água por m³
+
 DEFAULT_WALL_HEIGHT = 2.80  # metros
 DEFAULT_EXTERNAL_WALLS = 4
 
