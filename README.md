@@ -29,7 +29,7 @@ Aplicação web em Flask que calcula a quantidade de tijolos necessária para um
 
 ```bash
 # 1. Clone o repositorio
-git clone https://github.com/seu-usuario/TIJOLOcount.git
+git clone https://github.com/santocyber/TIJOLOcount.git
 cd TIJOLOcount
 
 # 2. Crie um ambiente virtual (recomendado)
