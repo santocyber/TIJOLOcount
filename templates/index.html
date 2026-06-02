@@ -42,12 +42,17 @@
 
       <label>Snap:</label>
       <select id="snap-select">
+        <option value="0.01">1 cm</option>
         <option value="0.05" selected>5 cm</option>
         <option value="0.10">10 cm</option>
         <option value="0.25">25 cm</option>
         <option value="0.50">50 cm</option>
         <option value="1.00">1 m</option>
       </select>
+
+      <label title="Atrair cursor para cantos de paredes (tecla M)">
+        <input type="checkbox" id="endpoint-snap-toggle" checked /> Ímã
+      </label>
 
       <label>Altura:</label>
       <input

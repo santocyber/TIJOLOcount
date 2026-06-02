@@ -44,7 +44,7 @@ class Wall:
     @property
     def angle(self) -> float:
         """Angulo da parede a partir do eixo X (rotacao em torno de Y)."""
-        return math.atan2(self.z2 - self.z1, self.x2 - self.x1)
+        return math.atan2(-(self.z2 - self.z1), self.x2 - self.x1)
 
     @property
     def area(self) -> float:
@@ -52,18 +52,14 @@ class Wall:
         cut = sum(c.width * c.height for c in self.cutouts)
         return max(0, gross - cut)
 
-    def _brick_hits_cutout(self, along, y_pos, brick_w, brick_h):
+    def _brick_hits_cutout(self, cx, cy, brick_w, brick_h):
+        """Verifica se um tijolo centrado em (cx, cy) sobrepoe algum recorte."""
+        half_w = brick_w / 2
+        half_h = brick_h / 2
         for c in self.cutouts:
             if (
-                c.position <= along <= c.position + c.width
-                and c.elevation <= y_pos <= c.elevation + c.height
-            ):
-                return True
-            if (
-                c.position <= along + brick_w / 2
-                and along - brick_w / 2 <= c.position + c.width
-                and c.elevation <= y_pos + brick_h / 2
-                and y_pos - brick_h / 2 <= c.elevation + c.height
+                c.position - half_w < cx < c.position + c.width + half_w
+                and c.elevation - half_h < cy < c.elevation + c.height + half_h
             ):
                 return True
         return False
@@ -75,8 +71,8 @@ class Wall:
         length = self.length
         h = self.height
 
-        n_along = max(1, int(math.ceil(length / step_x)))
-        n_rows = max(1, int(math.ceil(h / step_y)))
+        n_along = max(1, int(length / step_x))
+        n_rows = max(1, int(h / step_y))
 
         total_space_x = n_along * step_x
         start_offset_x = (total_space_x - length) / 2
@@ -94,18 +90,21 @@ class Wall:
         for row in range(n_rows):
             for col in range(n_along):
                 along = start_offset_x + col * step_x
-                y_pos = start_offset_y + row * step_y
+                y_cell = start_offset_y + row * step_y
 
-                if self._brick_hits_cutout(along, y_pos, brick_along, brick_up):
+                cx = along + step_x / 2
+                cy = y_cell + step_y / 2
+
+                if self._brick_hits_cutout(cx, cy, brick_along, brick_up):
                     continue
 
-                wx = self.x1 + ux * (along + step_x / 2)
-                wz = self.z1 + uz * (along + step_x / 2)
+                wx = self.x1 + ux * cx
+                wz = self.z1 + uz * cx
 
                 positions.append(
                     {
                         "x": round(wx, 4),
-                        "y": round(self.base_elevation + y_pos + step_y / 2, 4),
+                        "y": round(self.base_elevation + cy, 4),
                         "z": round(wz, 4),
                         "rotY": round(self.angle, 4),
                         "type": self.wall_type,

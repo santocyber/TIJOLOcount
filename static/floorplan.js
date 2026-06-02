@@ -21,6 +21,17 @@ export class FloorPlan {
     this.walls = [];
     this.nextId = 1;
 
+    this.referenceLayers = [];
+    this.layerPalette = [
+      "#d28250", "#4da6ff", "#4caf50", "#9c27b0",
+      "#ff9800", "#00bcd4", "#e91e63", "#607d8b",
+    ];
+
+    this.endpointSnapEnabled = options.endpointSnapEnabled !== false;
+    this.endpointSnapThreshold = options.endpointSnapThreshold || 0.5;
+    this.midpointSnapThreshold = options.midpointSnapThreshold || 0.3;
+    this.endpointSnapTarget = null;
+
     this.drawing = false;
     this.startX = 0;
     this.startZ = 0;
@@ -114,6 +125,13 @@ export class FloorPlan {
     this.onWallsChange();
   }
 
+  setReferenceLayers(allLayers, currentIdx) {
+    this.referenceLayers = (allLayers || [])
+      .map((l, i) => ({ ...l, _idx: i }))
+      .filter((l) => l._idx !== currentIdx);
+    this._render();
+  }
+
   // ----- Eventos -----
 
   _bindEvents() {
@@ -129,6 +147,60 @@ export class FloorPlan {
 
   _snap(v) {
     return Math.round(v / this.snapSize) * this.snapSize;
+  }
+
+  setEndpointSnapEnabled(enabled) {
+    this.endpointSnapEnabled = enabled;
+    this.endpointSnapTarget = null;
+    this._render();
+  }
+
+  _findSnapTarget(wx, wz) {
+    const allWalls = [
+      ...this.walls,
+      ...this.referenceLayers.flatMap((l) => l.walls || []),
+    ];
+    let best = null;
+    let bestDist = Infinity;
+
+    for (const w of allWalls) {
+      let d = Math.hypot(wx - w.x1, wz - w.z1);
+      if (d < bestDist && d < this.endpointSnapThreshold) {
+        bestDist = d;
+        best = { x: w.x1, z: w.z1, type: "endpoint" };
+      }
+      d = Math.hypot(wx - w.x2, wz - w.z2);
+      if (d < bestDist && d < this.endpointSnapThreshold) {
+        bestDist = d;
+        best = { x: w.x2, z: w.z2, type: "endpoint" };
+      }
+      if (this.midpointSnapThreshold > 0) {
+        const mx = (w.x1 + w.x2) / 2;
+        const mz = (w.z1 + w.z2) / 2;
+        d = Math.hypot(wx - mx, wz - mz);
+        if (d < bestDist && d < this.midpointSnapThreshold) {
+          bestDist = d;
+          best = { x: mx, z: mz, type: "midpoint" };
+        }
+      }
+    }
+    return best;
+  }
+
+  _applyAllSnaps(wx, wz) {
+    const sx = this._snap(wx);
+    const sz = this._snap(wz);
+
+    if (this.endpointSnapEnabled) {
+      const target = this._findSnapTarget(wx, wz);
+      if (target) {
+        this.endpointSnapTarget = target;
+        return { x: target.x, z: target.z };
+      }
+    }
+
+    this.endpointSnapTarget = null;
+    return { x: sx, z: sz };
   }
 
   _canvasToWorld(cx, cy) {
@@ -155,8 +227,9 @@ export class FloorPlan {
     if (e.button !== 0) return;
 
     const cPos = this._canvasToWorld(e.offsetX, e.offsetY);
-    const sx = this._snap(cPos.x);
-    const sz = this._snap(cPos.z);
+    const snapped = this._applyAllSnaps(cPos.x, cPos.z);
+    const sx = snapped.x;
+    const sz = snapped.z;
 
     switch (this.mode) {
       case "draw":
@@ -183,12 +256,13 @@ export class FloorPlan {
     }
 
     const cPos = this._canvasToWorld(e.offsetX, e.offsetY);
-    const sx = this._snap(cPos.x);
-    const sz = this._snap(cPos.z);
+    const snapped = this._applyAllSnaps(cPos.x, cPos.z);
+    const sx = snapped.x;
+    const sz = snapped.z;
 
     // Cursor tracking
-    this.cursorWorldX = cPos.x;
-    this.cursorWorldZ = cPos.z;
+    this.cursorWorldX = snapped.x;
+    this.cursorWorldZ = snapped.z;
 
     if (this.drawing) {
       this.mouseX = sx;
@@ -269,6 +343,14 @@ export class FloorPlan {
       return;
     }
     if (key === "e") this._toggleWallType();
+    if (key === "m") {
+      this.endpointSnapEnabled = !this.endpointSnapEnabled;
+      const toggle = document.getElementById("endpoint-snap-toggle");
+      if (toggle) toggle.checked = this.endpointSnapEnabled;
+      this.endpointSnapTarget = null;
+      this._render();
+      return;
+    }
   }
 
   // ----- Modos -----
@@ -434,8 +516,10 @@ export class FloorPlan {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     this._drawGrid();
+    this._drawReferenceLayers();
     this._drawWalls();
     this._drawPreview();
+    this._drawCutouts();
     this._drawLabels();
   }
 
@@ -502,6 +586,28 @@ export class FloorPlan {
     ctx.fill();
   }
 
+  _drawReferenceLayers() {
+    if (!this.referenceLayers.length) return;
+    const ctx = this.ctx;
+    for (const layer of this.referenceLayers) {
+      if (!layer.walls || !layer.walls.length) continue;
+      const color = this.layerPalette[layer._idx % this.layerPalette.length];
+      for (const wall of layer.walls) {
+        const p1 = this._worldToCanvas(wall.x1, wall.z1);
+        const p2 = this._worldToCanvas(wall.x2, wall.z2);
+        ctx.globalAlpha = 0.3;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1.0;
+  }
+
   _drawPreview() {
     if (!this.drawing) return;
     const p1 = this._worldToCanvas(this.startX, this.startZ);
@@ -555,6 +661,80 @@ export class FloorPlan {
       );
     } else {
       this.ctx.fillText(dist.toFixed(2) + " m", midX, midY - 10);
+    }
+
+    if (this.endpointSnapTarget) {
+      const pt = this._worldToCanvas(
+        this.endpointSnapTarget.x,
+        this.endpointSnapTarget.z,
+      );
+      const color =
+        this.endpointSnapTarget.type === "midpoint" ? "#ff6b6b" : "#ffd700";
+      this.ctx.fillStyle = color;
+      this.ctx.beginPath();
+      this.ctx.arc(pt.x, pt.y, 8, 0, Math.PI * 2);
+      this.ctx.fill();
+      this.ctx.strokeStyle = "#fff";
+      this.ctx.lineWidth = 1.5;
+      this.ctx.stroke();
+
+      this.ctx.strokeStyle = color;
+      this.ctx.globalAlpha = 0.4;
+      this.ctx.beginPath();
+      this.ctx.arc(pt.x, pt.y, 14, 0, Math.PI * 2);
+      this.ctx.stroke();
+      this.ctx.globalAlpha = 1.0;
+    }
+  }
+
+  _drawCutouts() {
+    const ctx = this.ctx;
+    for (const wall of this.walls) {
+      if (!wall.cutouts || !wall.cutouts.length) continue;
+      const wlen = Math.hypot(wall.x2 - wall.x1, wall.z2 - wall.z1);
+      for (const c of wall.cutouts) {
+        const t1 = c.position / wlen;
+        const t2 = (c.position + c.width) / wlen;
+        const cx1 = wall.x1 + (wall.x2 - wall.x1) * t1;
+        const cz1 = wall.z1 + (wall.z2 - wall.z1) * t1;
+        const cx2 = wall.x1 + (wall.x2 - wall.x1) * t2;
+        const cz2 = wall.z1 + (wall.z2 - wall.z1) * t2;
+        const dx = cx2 - cx1;
+        const dz = cz2 - cz1;
+        const nx = -dz;
+        const nz = dx;
+        const nl = Math.hypot(nx, nz) || 1;
+        const s = 0.3;
+
+        const p1 = this._worldToCanvas(cx1 + (nx / nl) * s, cz1 + (nz / nl) * s);
+        const p2 = this._worldToCanvas(cx1 - (nx / nl) * s, cz1 - (nz / nl) * s);
+        const p3 = this._worldToCanvas(cx2 - (nx / nl) * s, cz2 - (nz / nl) * s);
+        const p4 = this._worldToCanvas(cx2 + (nx / nl) * s, cz2 + (nz / nl) * s);
+
+        const isDoor = c.cutType === "door";
+        const fillColor = isDoor ? "rgba(0,212,255,0.4)" : "rgba(77,166,255,0.4)";
+        const strokeColor = isDoor ? "#00d4ff" : "#4da6ff";
+
+        ctx.fillStyle = fillColor;
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.lineTo(p3.x, p3.y);
+        ctx.lineTo(p4.x, p4.y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        const midX = (p1.x + p3.x) / 2;
+        const midY = (p1.y + p3.y) / 2;
+        ctx.fillStyle = strokeColor;
+        ctx.font = "10px monospace";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(isDoor ? "P" : "J", midX, midY);
+      }
     }
   }
 

@@ -25,7 +25,7 @@ const camera = new THREE.PerspectiveCamera(
   0.1,
   200,
 );
-camera.position.set(10, 8, 14);
+camera.position.set(10, 8, -14);
 camera.lookAt(0, 1.5, 0);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -109,7 +109,7 @@ function frameCameraOnModel(model) {
   const s = box.getSize(new THREE.Vector3());
   const md = Math.max(s.x, s.y, s.z, 3);
   controls.target.copy(c);
-  camera.position.set(c.x + md * 0.8, c.y + md * 0.6, c.z + md * 1.1);
+  camera.position.set(c.x + md * 0.8, c.y + md * 0.6, c.z - md * 1.1);
   camera.far = md * 5;
   camera.updateProjectionMatrix();
   controls.update();
@@ -154,10 +154,10 @@ animate();
 const cutout3d = new Cutout3D(viewerEl, scene, camera, renderer, controls);
 cutout3d.onCutoutChange = (updatedLayers) => {
   layers = updatedLayers;
-  // Sincroniza cutouts de volta pro floorplan
   const cl = layers[currentLayerIdx];
   if (cl) {
     floorplan.setWalls(cl.walls);
+    floorplan.setReferenceLayers(layers, currentLayerIdx);
   }
   scheduleGenerate();
 };
@@ -197,6 +197,11 @@ function restoreProject() {
           document.getElementById("snap-select").value = data.snap_size;
           floorplan.setSnapSize(data.snap_size);
         }
+        if (data.endpoint_snap !== undefined) {
+          floorplan.setEndpointSnapEnabled(data.endpoint_snap);
+          document.getElementById("endpoint-snap-toggle").checked =
+            data.endpoint_snap;
+        }
         currentLayerIdx = Math.min(data.current_layer || 0, layers.length - 1);
         switchToLayer(currentLayerIdx, false);
         return true;
@@ -220,6 +225,7 @@ function autoSave() {
           document.getElementById("mortar-joint-input").value || "1.0",
         ) / 100,
       snap_size: floorplan.snapSize,
+      endpoint_snap: floorplan.endpointSnapEnabled,
       current_layer: currentLayerIdx,
       layers: layers,
     };
@@ -244,6 +250,7 @@ function switchToLayer(idx, savePrev) {
   floorplan.setWallHeight(l.height || 2.8);
   document.getElementById("wall-height-input").value = l.height || 2.8;
   floorplan.setWalls(l.walls || []);
+  floorplan.setReferenceLayers(layers, currentLayerIdx);
   updateLayerUI();
 }
 
@@ -516,6 +523,12 @@ document.getElementById("snap-select").addEventListener("change", (e) => {
   floorplan.setSnapSize(parseFloat(e.target.value));
   autoSave();
 });
+document
+  .getElementById("endpoint-snap-toggle")
+  .addEventListener("change", (e) => {
+    floorplan.setEndpointSnapEnabled(e.target.checked);
+    autoSave();
+  });
 document.getElementById("btn-clear").addEventListener("click", () => {
   floorplan.clear();
   layers[currentLayerIdx].walls = [];
@@ -526,7 +539,7 @@ document.getElementById("btn-reset-cam").addEventListener("click", () => {
     frameCameraOnModel(currentModel);
   } else {
     controls.target.set(0, 1.5, 0);
-    camera.position.set(10, 8, 14);
+    camera.position.set(10, 8, -14);
     controls.update();
   }
 });
@@ -579,6 +592,11 @@ document.getElementById("btn-load-file").addEventListener("change", (e) => {
         if (data.snap_size) {
           document.getElementById("snap-select").value = data.snap_size;
           floorplan.setSnapSize(data.snap_size);
+        }
+        if (data.endpoint_snap !== undefined) {
+          floorplan.setEndpointSnapEnabled(data.endpoint_snap);
+          document.getElementById("endpoint-snap-toggle").checked =
+            data.endpoint_snap;
         }
         currentLayerIdx = Math.min(data.current_layer || 0, layers.length - 1);
         switchToLayer(currentLayerIdx, false);

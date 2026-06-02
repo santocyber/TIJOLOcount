@@ -16,7 +16,7 @@ export class BrickAnimator {
     const h = containerEl.clientHeight;
 
     this.camera = new THREE.PerspectiveCamera(50, w / Math.max(h, 1), 0.1, 60);
-    this.camera.position.set(10, 8, 14);
+    this.camera.position.set(10, 8, -14);
     this.camera.lookAt(0, 1.5, 0);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -189,7 +189,7 @@ export class BrickAnimator {
       this.camera.position.set(
         cx + maxDim * 0.7,
         maxDim * 0.5,
-        cz + maxDim * 0.9,
+        cz - maxDim * 0.9,
       );
       this.controls.update();
     }

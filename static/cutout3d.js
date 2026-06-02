@@ -233,7 +233,7 @@ export class Cutout3D {
     const len = wd.length;
     const ux = dx / len;
     const uz = dz / len;
-    const angle = Math.atan2(dz, dx);
+    const angle = Math.atan2(-dz, dx);
 
     const cx = wd.x1 + ux * (hit.position + this.cutWidth / 2);
     const cz = wd.z1 + uz * (hit.position + this.cutWidth / 2);
@@ -280,7 +280,7 @@ export class Cutout3D {
       if (len < 1e-6) continue;
       const ux = dx / len;
       const uz = dz / len;
-      const angle = Math.atan2(dz, dx);
+      const angle = Math.atan2(-dz, dx);
 
       for (const c of cutouts) {
         const color = c.cut_type === "door" ? 0x00d4ff : 0x4da6ff;

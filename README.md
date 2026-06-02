@@ -2,6 +2,8 @@
 
 Aplicacao web em Flask que calcula a quantidade de tijolos e materiais necessarios para uma construcao e gera um modelo 3D interativo das paredes usando **Trimesh** + **Three.js**.
 
+![TIJOLOcount Interface](screenshot.png)
+
 ## Funcionalidades
 
 - Desenho interativo de paredes no canvas 2D com snap a grid (5 cm a 1 m)
