@@ -99,6 +99,8 @@ class Wall3DBuilder:
 
         if wall.wall_type == "external":
             box.visual.face_colors = [210, 130, 80, 255]
+        elif wall.wall_type == "half_wall":
+            box.visual.face_colors = [77, 166, 255, 255]
         else:
             box.visual.face_colors = [140, 140, 140, 255]
 

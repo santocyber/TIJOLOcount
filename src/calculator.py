@@ -71,11 +71,8 @@ class Wall:
         length = self.length
         h = self.height
 
-        n_along = max(1, int(length / step_x))
-        n_rows = max(1, int(h / step_y))
-
-        total_space_x = n_along * step_x
-        start_offset_x = (total_space_x - length) / 2
+        n_along = max(1, int(math.ceil(length / step_x)))
+        n_rows = max(1, int(math.ceil(h / step_y)))
 
         total_space_y = n_rows * step_y
         start_offset_y = (total_space_y - h) / 2
@@ -89,13 +86,23 @@ class Wall:
         positions = []
         for row in range(n_rows):
             for col in range(n_along):
-                along = start_offset_x + col * step_x
+                along = col * step_x
                 y_cell = start_offset_y + row * step_y
 
-                cx = along + step_x / 2
+                brick_start = along + mortar_joint / 2
+
+                if brick_start >= length:
+                    continue
+
+                remaining = length - brick_start
+                scale_x = min(remaining / brick_along, 1.0)
+
+                cx = brick_start + (brick_along * scale_x) / 2
                 cy = y_cell + step_y / 2
 
-                if self._brick_hits_cutout(cx, cy, brick_along, brick_up):
+                if self._brick_hits_cutout(
+                    cx, cy, brick_along * scale_x, brick_up,
+                ):
                     continue
 
                 wx = self.x1 + ux * cx
@@ -108,6 +115,7 @@ class Wall:
                         "z": round(wz, 4),
                         "rotY": round(self.angle, 4),
                         "type": self.wall_type,
+                        "scaleX": round(scale_x, 4),
                     }
                 )
 

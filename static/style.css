@@ -146,23 +146,6 @@ body {
   width: 100%;
   height: 100%;
 }
-.canvas-placeholder {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  text-align: center;
-  color: #2a2a4a;
-  pointer-events: none;
-}
-.canvas-placeholder .icon {
-  font-size: 3em;
-}
-.canvas-placeholder p {
-  font-size: 0.9em;
-  margin-top: 6px;
-}
-
 /* Rulers */
 .ruler {
   position: absolute;
@@ -333,6 +316,9 @@ body {
 }
 .legend-color.internal {
   background: #8c8c8c;
+}
+.legend-color.halfwall {
+  background: #4da6ff;
 }
 
 /* ----- Modal ----- */

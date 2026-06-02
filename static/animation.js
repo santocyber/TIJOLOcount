@@ -90,6 +90,7 @@ export class BrickAnimator {
     // Instanced meshes
     this.instancedExternal = null;
     this.instancedInternal = null;
+    this.instancedHalfWall = null;
 
     this.positions = [];
     this.totalBricks = 0;
@@ -121,6 +122,7 @@ export class BrickAnimator {
 
     const extPos = positions.filter((p) => p.type === "external");
     const intPos = positions.filter((p) => p.type === "internal");
+    const halfPos = positions.filter((p) => p.type === "half_wall");
 
     const geom = new THREE.BoxGeometry(
       brickDims.length,
@@ -157,6 +159,17 @@ export class BrickAnimator {
       this.instancedInternal.castShadow = true;
       this.instancedInternal.userData.positions = intPos;
       this.scene.add(this.instancedInternal);
+    }
+    if (halfPos.length > 0) {
+      this.instancedHalfWall = new THREE.InstancedMesh(
+        geom,
+        new THREE.MeshStandardMaterial({ color: 0x4da6ff, roughness: 0.7 }),
+        halfPos.length,
+      );
+      this.instancedHalfWall.count = 0;
+      this.instancedHalfWall.castShadow = true;
+      this.instancedHalfWall.userData.positions = halfPos;
+      this.scene.add(this.instancedHalfWall);
     }
 
     if (positions.length > 0) {
@@ -210,6 +223,7 @@ export class BrickAnimator {
     this._brickAccum = 0;
     if (this.instancedExternal) this.instancedExternal.count = 0;
     if (this.instancedInternal) this.instancedInternal.count = 0;
+    if (this.instancedHalfWall) this.instancedHalfWall.count = 0;
     this._animStep();
   }
 
@@ -250,7 +264,9 @@ export class BrickAnimator {
 
   _placeBrick(pos) {
     const mesh =
-      pos.type === "external" ? this.instancedExternal : this.instancedInternal;
+      pos.type === "external" ? this.instancedExternal
+      : pos.type === "half_wall" ? this.instancedHalfWall
+      : this.instancedInternal;
     if (!mesh) return;
     const idx = mesh.count;
     if (idx >= mesh.userData.positions.length) return;
@@ -262,7 +278,7 @@ export class BrickAnimator {
         new THREE.Vector3(0, 1, 0),
         pos.rotY,
       ),
-      new THREE.Vector3(1, 1, 1),
+      new THREE.Vector3(pos.scaleX || 1, 1, 1),
     );
     mesh.setMatrixAt(idx, matrix);
     mesh.count = idx + 1;
@@ -281,8 +297,14 @@ export class BrickAnimator {
       this.instancedInternal.geometry.dispose();
       this.instancedInternal.material.dispose();
     }
+    if (this.instancedHalfWall) {
+      this.scene.remove(this.instancedHalfWall);
+      this.instancedHalfWall.geometry.dispose();
+      this.instancedHalfWall.material.dispose();
+    }
     this.instancedExternal = null;
     this.instancedInternal = null;
+    this.instancedHalfWall = null;
   }
 
   startSunCycleOnly(duration = 20) {

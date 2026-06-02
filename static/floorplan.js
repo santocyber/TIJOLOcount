@@ -8,6 +8,7 @@ export class FloorPlan {
     this.onWallsChange = options.onWallsChange || (() => {});
 
     this.mode = "draw";
+    this.halfwallMode = false;
     this.snapSize = options.snapSize || 0.05;
     this.wallHeight = options.wallHeight || 2.8;
     this.scale = 40;
@@ -17,6 +18,8 @@ export class FloorPlan {
     // Cursor tracking
     this.cursorWorldX = 0;
     this.cursorWorldZ = 0;
+    this._lastMouseX = 0;
+    this._lastMouseY = 0;
 
     this.walls = [];
     this.nextId = 1;
@@ -38,13 +41,19 @@ export class FloorPlan {
     this.mouseX = 0;
     this.mouseZ = 0;
 
-    this.selectedWallId = null;
+    this.selectedWallIds = new Set();
 
     this.dragging = false;
     this.dragEndpoint = null;
     this.dragWall = null;
     this.dragStartMX = 0;
     this.dragStartMZ = 0;
+    this._dragWalls = null;
+    this._dragOffsets = null;
+
+    this._undoHistory = [];
+    this._undoMaxDepth = 50;
+    this._shiftKey = false;
 
     this.panning = false;
     this.panStartX = 0;
@@ -69,6 +78,11 @@ export class FloorPlan {
   setMode(mode) {
     this.mode = mode;
     this.drawing = false;
+    this._render();
+  }
+
+  setHalfwallMode(active) {
+    this.halfwallMode = active;
     this._render();
   }
 
@@ -118,14 +132,16 @@ export class FloorPlan {
         elevation: c.elevation || 0,
       })),
     }));
-    this.selectedWallId = null;
+    this.selectedWallIds.clear();
+    this._undoHistory = [];
     this.drawing = false;
     this._render();
   }
 
   clear() {
+    this._pushUndo();
     this.walls = [];
-    this.selectedWallId = null;
+    this.selectedWallIds.clear();
     this.drawing = false;
     this._render();
     this.onWallsChange();
@@ -136,6 +152,44 @@ export class FloorPlan {
       .map((l, i) => ({ ...l, _idx: i }))
       .filter((l) => l._idx !== currentIdx);
     this._render();
+  }
+
+  _pushUndo() {
+    const snapshot = {
+      walls: this.walls.map((w) => ({
+        id: w.id,
+        x1: w.x1,
+        z1: w.z1,
+        x2: w.x2,
+        z2: w.z2,
+        height: w.height,
+        type: w.type,
+        label: w.label,
+        cutouts: w.cutouts.map((c) => ({
+          cutType: c.cutType,
+          width: c.width,
+          height: c.height,
+          position: c.position,
+          elevation: c.elevation,
+        })),
+      })),
+      selectedWallIds: [...this.selectedWallIds],
+    };
+    this._undoHistory.push(snapshot);
+    if (this._undoHistory.length > this._undoMaxDepth) {
+      this._undoHistory.shift();
+    }
+  }
+
+  _undo() {
+    if (this._undoHistory.length === 0) return;
+    const snapshot = this._undoHistory.pop();
+    this.walls = snapshot.walls;
+    this.nextId =
+      Math.max(1, ...snapshot.walls.map((w) => w.id || 0), 0) + 1;
+    this.selectedWallIds = new Set(snapshot.selectedWallIds);
+    this._render();
+    this.onWallsChange();
   }
 
   // ----- Eventos -----
@@ -161,11 +215,11 @@ export class FloorPlan {
     this._render();
   }
 
-  _findSnapTarget(wx, wz) {
+  _findSnapTarget(wx, wz, excludeIds = new Set()) {
     const allWalls = [
       ...this.walls,
       ...this.referenceLayers.flatMap((l) => l.walls || []),
-    ];
+    ].filter((w) => !excludeIds.has(w.id));
     let best = null;
     let bestDist = Infinity;
 
@@ -193,12 +247,12 @@ export class FloorPlan {
     return best;
   }
 
-  _applyAllSnaps(wx, wz) {
+  _applyAllSnaps(wx, wz, excludeIds = new Set()) {
     const sx = this._snap(wx);
     const sz = this._snap(wz);
 
     if (this.endpointSnapEnabled) {
-      const target = this._findSnapTarget(wx, wz);
+      const target = this._findSnapTarget(wx, wz, excludeIds);
       if (target) {
         this.endpointSnapTarget = target;
         return { x: target.x, z: target.z };
@@ -232,6 +286,8 @@ export class FloorPlan {
     }
     if (e.button !== 0) return;
 
+    this._shiftKey = e.shiftKey;
+
     const cPos = this._canvasToWorld(e.offsetX, e.offsetY);
     const snapped = this._applyAllSnaps(cPos.x, cPos.z);
     const sx = snapped.x;
@@ -262,30 +318,49 @@ export class FloorPlan {
     }
 
     if (this.dragging && this.dragWall) {
+      const excludeIds = this._dragWalls
+        ? new Set(this._dragWalls.map((w) => w.id))
+        : new Set([this.dragWall.id]);
       const cPos = this._canvasToWorld(e.offsetX, e.offsetY);
-      const snapped = this._applyAllSnaps(cPos.x, cPos.z);
+      const snapped = this._applyAllSnaps(cPos.x, cPos.z, excludeIds);
       const dx = snapped.x - this.dragStartMX;
       const dz = snapped.z - this.dragStartMZ;
       if (this.dragEndpoint === 0) {
-        this.dragWall.x1 = this.dragWall.x1 + dx;
-        this.dragWall.z1 = this.dragWall.z1 + dz;
-        this.dragWall.x2 = this.dragWall.x2 + dx;
-        this.dragWall.z2 = this.dragWall.z2 + dz;
+        if (this._dragWalls && this._dragWalls.length > 1) {
+          for (let i = 0; i < this._dragWalls.length; i++) {
+            this._dragWalls[i].x1 = snapped.x + this._dragOffsets[i].x1;
+            this._dragWalls[i].z1 = snapped.z + this._dragOffsets[i].z1;
+            this._dragWalls[i].x2 = snapped.x + this._dragOffsets[i].x2;
+            this._dragWalls[i].z2 = snapped.z + this._dragOffsets[i].z2;
+          }
+        } else {
+          this.dragWall.x1 = this._dragOrigX1 + dx;
+          this.dragWall.z1 = this._dragOrigZ1 + dz;
+          this.dragWall.x2 = this._dragOrigX2 + dx;
+          this.dragWall.z2 = this._dragOrigZ2 + dz;
+          if (this.endpointSnapEnabled) {
+            this._alignDragEndpoints(excludeIds);
+          }
+        }
       } else if (this.dragEndpoint === 1) {
         this.dragWall.x1 = snapped.x;
         this.dragWall.z1 = snapped.z;
+        this.dragStartMX = snapped.x;
+        this.dragStartMZ = snapped.z;
       } else {
         this.dragWall.x2 = snapped.x;
         this.dragWall.z2 = snapped.z;
+        this.dragStartMX = snapped.x;
+        this.dragStartMZ = snapped.z;
       }
-      this.dragStartMX = snapped.x;
-      this.dragStartMZ = snapped.z;
       this._render();
       return;
     }
 
     const cPos = this._canvasToWorld(e.offsetX, e.offsetY);
     const snapped = this._applyAllSnaps(cPos.x, cPos.z);
+    this._lastMouseX = e.offsetX;
+    this._lastMouseY = e.offsetY;
     const sx = snapped.x;
     const sz = snapped.z;
 
@@ -304,14 +379,14 @@ export class FloorPlan {
     else if (this.mode === "delete") cursor = "pointer";
     else if (this.mode === "select") {
       if (this.dragging) cursor = "grabbing";
-      else if (this.selectedWallId !== null) {
-        const selWall = this.walls.find(
-          (w) => w.id === this.selectedWallId,
-        );
-        if (selWall && this._hitHandle(e.offsetX, e.offsetY, selWall)) {
-          cursor = "grab";
+      else if (this.selectedWallIds.size > 0) {
+        const selHit = this._hitWallWithPos(e.offsetX, e.offsetY);
+        if (selHit && this.selectedWallIds.has(selHit.wall.id)) {
+          cursor = this._hitHandle(e.offsetX, e.offsetY, selHit.wall)
+            ? "grab"
+            : "move";
         } else {
-          cursor = "move";
+          cursor = "default";
         }
       }
     }
@@ -323,6 +398,8 @@ export class FloorPlan {
       this.dragging = false;
       this.dragWall = null;
       this.dragEndpoint = null;
+      this._dragWalls = null;
+      this._dragOffsets = null;
       this._render();
       this.onWallsChange();
     }
@@ -336,14 +413,25 @@ export class FloorPlan {
   _onWheel(e) {
     e.preventDefault();
     const zoom = e.deltaY > 0 ? 0.9 : 1.1;
-    const mx = e.offsetX;
-    const my = e.offsetY;
+    this._zoomAt(zoom, e.offsetX, e.offsetY);
+  }
+
+  zoomIn() {
+    this._zoomAt(1.15, this._lastMouseX, this._lastMouseY);
+  }
+
+  zoomOut() {
+    this._zoomAt(1 / 1.15, this._lastMouseX, this._lastMouseY);
+  }
+
+  _zoomAt(zoom, mx, my) {
+    const newScale = this.scale * zoom;
+    if (newScale < 5 || newScale > 300) return;
     const cx = this.canvas.width / 2;
     const cy = this.canvas.height / 2;
     this.offsetX = (this.offsetX - (mx - cx)) * zoom + (mx - cx);
     this.offsetY = (this.offsetY - (my - cy)) * zoom + (my - cy);
-    this.scale *= zoom;
-    this.scale = Math.max(5, Math.min(300, this.scale));
+    this.scale = newScale;
     this._render();
   }
 
@@ -353,6 +441,16 @@ export class FloorPlan {
   }
 
   _onKeyDown(e) {
+    if (e.ctrlKey && e.key.toLowerCase() === "z") {
+      e.preventDefault();
+      if (this.drawing) {
+        this.drawing = false;
+        this._render();
+        return;
+      }
+      this._undo();
+      return;
+    }
     const key = e.key.toLowerCase();
     if (key === "d") {
       this.setMode("draw");
@@ -375,28 +473,37 @@ export class FloorPlan {
         this.dragging = false;
         this.dragWall = null;
         this.dragEndpoint = null;
+        this._dragWalls = null;
+        this._dragOffsets = null;
         this._render();
         this.onWallsChange();
         return;
       }
       this.drawing = false;
-      this.selectedWallId = null;
+      this.selectedWallIds.clear();
       this._render();
       return;
     }
     if (key === "delete" || key === "backspace") {
-      if (this.selectedWallId !== null) {
-        const idx = this.walls.findIndex((w) => w.id === this.selectedWallId);
-        if (idx >= 0) {
-          this.walls.splice(idx, 1);
-          this.selectedWallId = null;
-          this._render();
-          this.onWallsChange();
-        }
+      if (this.selectedWallIds.size > 0) {
+        this._pushUndo();
+        this.walls = this.walls.filter(
+          (w) => !this.selectedWallIds.has(w.id),
+        );
+        this.selectedWallIds.clear();
+        this._render();
+        this.onWallsChange();
       }
       return;
     }
     if (key === "e") this._toggleWallType();
+    if (key === "h") {
+      this.halfwallMode = !this.halfwallMode;
+      const btn = document.getElementById("btn-halfwall");
+      if (btn) btn.classList.toggle("active", this.halfwallMode);
+      this._render();
+      return;
+    }
     if (key === "m") {
       this.endpointSnapEnabled = !this.endpointSnapEnabled;
       const toggle = document.getElementById("endpoint-snap-toggle");
@@ -424,6 +531,7 @@ export class FloorPlan {
   _onDeleteDown(mx, my) {
     const idx = this._hitWall(mx, my);
     if (idx >= 0) {
+      this._pushUndo();
       this.walls.splice(idx, 1);
       this._render();
       this.onWallsChange();
@@ -431,34 +539,99 @@ export class FloorPlan {
   }
 
   _onSelectDown(mx, my) {
-    if (this.selectedWallId !== null) {
-      const selWall = this.walls.find((w) => w.id === this.selectedWallId);
-      if (selWall) {
-        const handle = this._hitHandle(mx, my, selWall);
-        if (handle) {
+    const shift = this._shiftKey;
+
+    if (!shift && this.selectedWallIds.size > 0) {
+      const hit = this._hitWallWithPos(mx, my);
+      if (hit && this.selectedWallIds.has(hit.wall.id)) {
+        const handle = this._hitHandle(mx, my, hit.wall);
+        if (handle && this.selectedWallIds.size === 1) {
+          this._pushUndo();
           this.dragging = true;
-          this.dragWall = selWall;
+          this.dragWall = hit.wall;
           this.dragEndpoint = handle;
           const mw = this._canvasToWorld(mx, my);
           this.dragStartMX = mw.x;
           this.dragStartMZ = mw.z;
           return;
         }
-        const hit = this._hitWallWithPos(mx, my);
-        if (hit && hit.wall.id === this.selectedWallId) {
-          this.dragging = true;
-          this.dragWall = selWall;
-          this.dragEndpoint = 0;
-          const mw = this._canvasToWorld(mx, my);
-          this.dragStartMX = mw.x;
-          this.dragStartMZ = mw.z;
+        this._pushUndo();
+        this.dragging = true;
+        this.dragWall = hit.wall;
+        this.dragEndpoint = 0;
+        const mw = this._canvasToWorld(mx, my);
+        this.dragStartMX = mw.x;
+        this.dragStartMZ = mw.z;
+        this._dragOrigX1 = hit.wall.x1;
+        this._dragOrigZ1 = hit.wall.z1;
+        this._dragOrigX2 = hit.wall.x2;
+        this._dragOrigZ2 = hit.wall.z2;
+        this._dragWalls = this.walls.filter((w) =>
+          this.selectedWallIds.has(w.id),
+        );
+        this._dragOffsets = this._dragWalls.map((w) => ({
+          x1: w.x1 - mw.x,
+          z1: w.z1 - mw.z,
+          x2: w.x2 - mw.x,
+          z2: w.z2 - mw.z,
+        }));
+        return;
+      }
+    }
+
+    const idx = this._hitWall(mx, my);
+
+    if (shift) {
+      if (idx >= 0) {
+        const wallId = this.walls[idx].id;
+        if (this.selectedWallIds.has(wallId)) {
+          this.selectedWallIds.delete(wallId);
+        } else {
+          this.selectedWallIds.add(wallId);
+        }
+      }
+    } else {
+      this.selectedWallIds.clear();
+      if (idx >= 0) {
+        this.selectedWallIds.add(this.walls[idx].id);
+      }
+    }
+    this._render();
+  }
+
+  _alignDragEndpoints(excludeIds) {
+    if (!this.dragWall || this.dragEndpoint !== 0) return;
+    const targets = [];
+    for (const w of this.walls) {
+      if (excludeIds.has(w.id)) continue;
+      targets.push({ x: w.x1, z: w.z1 }, { x: w.x2, z: w.z2 });
+    }
+    for (const rl of this.referenceLayers) {
+      for (const w of rl.walls || []) {
+        targets.push({ x: w.x1, z: w.z1 }, { x: w.x2, z: w.z2 });
+      }
+    }
+    const thresh = this.endpointSnapThreshold * 0.8;
+    for (const [ex, ez] of [
+      [this.dragWall.x1, this.dragWall.z1],
+      [this.dragWall.x2, this.dragWall.z2],
+    ]) {
+      for (const t of targets) {
+        if (Math.hypot(ex - t.x, ez - t.z) < thresh) {
+          const sx = t.x - ex;
+          const sz = t.z - ez;
+          this.dragWall.x1 += sx;
+          this.dragWall.z1 += sz;
+          this.dragWall.x2 += sx;
+          this.dragWall.z2 += sz;
+          this.dragWall.x1 = this._snap(this.dragWall.x1);
+          this.dragWall.z1 = this._snap(this.dragWall.z1);
+          this.dragWall.x2 = this._snap(this.dragWall.x2);
+          this.dragWall.z2 = this._snap(this.dragWall.z2);
           return;
         }
       }
     }
-    const idx = this._hitWall(mx, my);
-    this.selectedWallId = idx >= 0 ? this.walls[idx].id : null;
-    this._render();
   }
 
   _onRectDown(sx, sz) {
@@ -486,11 +659,14 @@ export class FloorPlan {
       z1 = this.startZ,
       x2 = ex,
       z2 = ez;
+    const h = this.halfwallMode ? this.wallHeight / 2 : this.wallHeight;
+    const t = this.halfwallMode ? "half_wall" : "external";
+    this._pushUndo();
     const walls = [
-      { x1: x1, z1: z1, x2: x2, z2: z1, type: "external" },
-      { x1: x2, z1: z1, x2: x2, z2: z2, type: "external" },
-      { x1: x2, z1: z2, x2: x1, z2: z2, type: "external" },
-      { x1: x1, z1: z2, x2: x1, z2: z1, type: "external" },
+      { x1: x1, z1: z1, x2: x2, z2: z1, type: t },
+      { x1: x2, z1: z1, x2: x2, z2: z2, type: t },
+      { x1: x2, z1: z2, x2: x1, z2: z2, type: t },
+      { x1: x1, z1: z2, x2: x1, z2: z1, type: t },
     ];
     for (const w of walls) {
       if (Math.hypot(w.x2 - w.x1, w.z2 - w.z1) > 0.01) {
@@ -500,7 +676,7 @@ export class FloorPlan {
           z1: w.z1,
           x2: w.x2,
           z2: w.z2,
-          height: this.wallHeight,
+          height: h,
           type: w.type,
           label: "",
           cutouts: [],
@@ -523,14 +699,17 @@ export class FloorPlan {
       this._render();
       return;
     }
+    const h = this.halfwallMode ? this.wallHeight / 2 : this.wallHeight;
+    const t = this.halfwallMode ? "half_wall" : "external";
+    this._pushUndo();
     this.walls.push({
       id: this.nextId++,
       x1: this.startX,
       z1: this.startZ,
       x2: ex,
       z2: ez,
-      height: this.wallHeight,
-      type: "external",
+      height: h,
+      type: t,
       label: "",
       cutouts: [],
     });
@@ -540,13 +719,22 @@ export class FloorPlan {
   }
 
   _toggleWallType() {
-    const wall = this.walls.find((w) => w.id === this.selectedWallId);
-    if (wall) {
-      wall.type = wall.type === "external" ? "internal" : "external";
+    if (this.selectedWallIds.size === 0) return;
+    this._pushUndo();
+    const cycle = ["external", "internal", "half_wall"];
+    for (const wall of this.walls) {
+      if (!this.selectedWallIds.has(wall.id)) continue;
+      const idx = cycle.indexOf(wall.type);
+      wall.type = cycle[(idx + 1) % cycle.length];
+      if (wall.type === "half_wall") {
+        wall.height = this.wallHeight / 2;
+      } else if (wall.height < this.wallHeight) {
+        wall.height = this.wallHeight;
+      }
       wall.label = "";
-      this._render();
-      this.onWallsChange();
     }
+    this._render();
+    this.onWallsChange();
   }
 
   // ----- Hit testing -----
@@ -651,16 +839,27 @@ export class FloorPlan {
     for (const wall of this.walls) {
       const p1 = this._worldToCanvas(wall.x1, wall.z1);
       const p2 = this._worldToCanvas(wall.x2, wall.z2);
-      const isSelected = wall.id === this.selectedWallId;
-      const color = wall.type === "external" ? "#d28250" : "#8c8c8c";
+      const isSelected = this.selectedWallIds.has(wall.id);
+      const isHalf = wall.type === "half_wall";
+
+      let color, lineW;
+      if (isHalf) {
+        color = "#4da6ff";
+        lineW = isSelected ? 3 : 2;
+      } else {
+        color = wall.type === "external" ? "#d28250" : "#8c8c8c";
+        lineW = isSelected ? 4 : 3;
+      }
 
       this.ctx.strokeStyle = isSelected ? "#e94560" : color;
-      this.ctx.lineWidth = isSelected ? 4 : 3;
+      this.ctx.lineWidth = lineW;
       this.ctx.lineCap = "round";
+      if (isHalf) this.ctx.setLineDash([8, 4]);
       this.ctx.beginPath();
       this.ctx.moveTo(p1.x, p1.y);
       this.ctx.lineTo(p2.x, p2.y);
       this.ctx.stroke();
+      this.ctx.setLineDash([]);
 
       if (isSelected) {
         this._drawHandle(p1.x, p1.y);
@@ -864,8 +1063,13 @@ export class FloorPlan {
     this.ctx.fillStyle = "#555";
     this.ctx.font = "11px sans-serif";
     this.ctx.textAlign = "left";
+    const halfNote = this.halfwallMode ? " | MEIA PAREDE" : "";
+    const selNote =
+      this.selectedWallIds.size > 1
+        ? " | " + this.selectedWallIds.size + " sel"
+        : "";
     this.ctx.fillText(
-      (modeLabels[this.mode] || this.mode) +
+      (modeLabels[this.mode] || this.mode) + halfNote + selNote +
         " | Snap: " +
         (this.snapSize * 100).toFixed(0) +
         "cm" +
@@ -921,7 +1125,8 @@ export class FloorPlan {
 
     // Walls
     for (const wall of walls) {
-      const color = wall.type === "external" ? "#d28250" : "#8c8c8c";
+      const color = wall.type === "external" ? "#d28250"
+        : wall.type === "half_wall" ? "#4da6ff" : "#8c8c8c";
       svg += `<line x1="${wall.x1}" y1="${-wall.z1}" x2="${wall.x2}" y2="${-wall.z2}" stroke="${color}" stroke-width="0.15" stroke-linecap="round"/>`;
       const len = Math.hypot(wall.x2 - wall.x1, wall.z2 - wall.z1);
       const deg =

@@ -25,6 +25,11 @@ Aplicacao web em Flask que calcula a quantidade de tijolos e materiais necessari
 - Visualizacao de camadas de referencia com cores translucidas
 - Seletor de luz final na animacao (Nascer do Sol / Meio Dia / Por do Sol)
 - Iluminacao balanceada com HemisphereLight no viewer 3D principal
+- Meia-parede azul tracejada com altura/2 (botao dedicado + tecla H)
+- Ctrl+Z desfazer (50 acoes: desenhar, apagar, mover, mudar tipo)
+- Shift+Click multi-selecao de paredes (mover/apagar/alternar tipo em lote)
+- Botoes de zoom +/- no canvas 2D (zoom-to-cursor)
+- Tijolos cortados no final da parede na animacao (sem gaps nem protrusao)
 
 ## Tecnologias
 

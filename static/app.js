@@ -435,6 +435,7 @@ const btnDraw = document.getElementById("btn-draw");
 const btnRect = document.getElementById("btn-rect");
 const btnSelect = document.getElementById("btn-select");
 const btnDelete = document.getElementById("btn-delete");
+const btnHalfwall = document.getElementById("btn-halfwall");
 const modeButtons = [btnDraw, btnRect, btnSelect, btnDelete];
 
 function activateBtn(btn, mode) {
@@ -445,8 +446,27 @@ function activateBtn(btn, mode) {
 
 btnDraw.addEventListener("click", () => activateBtn(btnDraw, "draw"));
 btnRect.addEventListener("click", () => activateBtn(btnRect, "rect"));
-btnSelect.addEventListener("click", () => activateBtn(btnSelect, "select"));
-btnDelete.addEventListener("click", () => activateBtn(btnDelete, "delete"));
+btnSelect.addEventListener("click", () => {
+  activateBtn(btnSelect, "select");
+  btnHalfwall.classList.remove("active");
+  floorplan.setHalfwallMode(false);
+});
+btnDelete.addEventListener("click", () => {
+  activateBtn(btnDelete, "delete");
+  btnHalfwall.classList.remove("active");
+  floorplan.setHalfwallMode(false);
+});
+
+btnHalfwall.addEventListener("click", () => {
+  const isActive = btnHalfwall.classList.toggle("active");
+  floorplan.setHalfwallMode(isActive);
+  if (isActive) {
+    document.getElementById("status-bar").textContent =
+      "Meia parede — altura: " + (floorplan.wallHeight / 2).toFixed(2) + "m";
+  } else {
+    document.getElementById("status-bar").textContent = "";
+  }
+});
 
 // Cutout 3D controls
 const btnCutDoor = document.getElementById("btn-cut-door");
@@ -510,6 +530,13 @@ function allLayersData() {
     walls: l.walls,
   }));
 }
+
+document.getElementById("btn-zoom-in").addEventListener("click", () => {
+  floorplan.zoomIn();
+});
+document.getElementById("btn-zoom-out").addEventListener("click", () => {
+  floorplan.zoomOut();
+});
 
 btnCutDoor.addEventListener("click", () => activateCutout("door"));
 btnCutWindow.addEventListener("click", () => activateCutout("window"));
@@ -715,8 +742,6 @@ async function doGenerate() {
 
     document.getElementById("res-total-area").textContent =
       data.area_total_paredes_m2 + " m\u00b2";
-    document.getElementById("res-ext-area").textContent =
-      data.area_paredes_externas_m2 + " m\u00b2";
     document.getElementById("res-cement").textContent =
       (data.cimento_kg || 0).toLocaleString("pt-BR", {
         maximumFractionDigits: 1,
