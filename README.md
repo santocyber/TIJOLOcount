@@ -19,6 +19,10 @@ Aplicacao web em Flask que calcula a quantidade de tijolos e materiais necessari
 - Animacao de tijolos posicionados nas paredes
 - Reguas de medida no viewer 3D
 - Salvar/Abrir projeto em JSON
+- Arrastar extremidades das paredes para reposicionar (modo Selecionar)
+- Snap magnetico a cantos e ponto medio de paredes (tecla M / checkbox "Ímã")
+- Visualizacao de cortes (portas/janelas) no canvas 2D
+- Visualizacao de camadas de referencia com cores translucidas
 
 ## Tecnologias
 
@@ -57,7 +61,7 @@ Acesse **http://localhost:5020**
 
 1. Use o canvas 2D para **desenhar paredes** clicando para definir pontos (ferramenta "Desenhar" ativa por padrao)
 2. Alternativamente, use a ferramenta **"Retangulo"** para criar 4 paredes de uma vez
-3. Selecione paredes existentes com a ferramenta **"Selecionar"** para move-las ou deleta-las
+3. Selecione paredes existentes com a ferramenta **"Selecionar"** para move-las, arrastar suas extremidades ou deleta-las
 4. Adicione **portas e janelas** com os botoes de corte — clique sobre uma parede para posicionar
 5. Configure a **altura** das paredes, **tipo de tijolo**, **junta de argamassa** e **posicao/orientacao** do tijolo na toolbar
 6. Gerencie **camadas/andares** com os botoes `+` e `-` (cada camada tem paredes e altura independentes)

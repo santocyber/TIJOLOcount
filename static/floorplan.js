@@ -40,6 +40,12 @@ export class FloorPlan {
 
     this.selectedWallId = null;
 
+    this.dragging = false;
+    this.dragEndpoint = null;
+    this.dragWall = null;
+    this.dragStartMX = 0;
+    this.dragStartMZ = 0;
+
     this.panning = false;
     this.panStartX = 0;
     this.panStartY = 0;
@@ -255,6 +261,29 @@ export class FloorPlan {
       return;
     }
 
+    if (this.dragging && this.dragWall) {
+      const cPos = this._canvasToWorld(e.offsetX, e.offsetY);
+      const snapped = this._applyAllSnaps(cPos.x, cPos.z);
+      const dx = snapped.x - this.dragStartMX;
+      const dz = snapped.z - this.dragStartMZ;
+      if (this.dragEndpoint === 0) {
+        this.dragWall.x1 = this.dragWall.x1 + dx;
+        this.dragWall.z1 = this.dragWall.z1 + dz;
+        this.dragWall.x2 = this.dragWall.x2 + dx;
+        this.dragWall.z2 = this.dragWall.z2 + dz;
+      } else if (this.dragEndpoint === 1) {
+        this.dragWall.x1 = snapped.x;
+        this.dragWall.z1 = snapped.z;
+      } else {
+        this.dragWall.x2 = snapped.x;
+        this.dragWall.z2 = snapped.z;
+      }
+      this.dragStartMX = snapped.x;
+      this.dragStartMZ = snapped.z;
+      this._render();
+      return;
+    }
+
     const cPos = this._canvasToWorld(e.offsetX, e.offsetY);
     const snapped = this._applyAllSnaps(cPos.x, cPos.z);
     const sx = snapped.x;
@@ -270,16 +299,33 @@ export class FloorPlan {
       this._render();
     }
 
-    const cursors = {
-      draw: "crosshair",
-      rect: "crosshair",
-      select: "default",
-      delete: "pointer",
-    };
-    this.canvas.style.cursor = cursors[this.mode] || "default";
+    let cursor = "default";
+    if (this.mode === "draw" || this.mode === "rect") cursor = "crosshair";
+    else if (this.mode === "delete") cursor = "pointer";
+    else if (this.mode === "select") {
+      if (this.dragging) cursor = "grabbing";
+      else if (this.selectedWallId !== null) {
+        const selWall = this.walls.find(
+          (w) => w.id === this.selectedWallId,
+        );
+        if (selWall && this._hitHandle(e.offsetX, e.offsetY, selWall)) {
+          cursor = "grab";
+        } else {
+          cursor = "move";
+        }
+      }
+    }
+    this.canvas.style.cursor = cursor;
   }
 
   _onMouseUp() {
+    if (this.dragging) {
+      this.dragging = false;
+      this.dragWall = null;
+      this.dragEndpoint = null;
+      this._render();
+      this.onWallsChange();
+    }
     this.panning = false;
   }
 
@@ -325,6 +371,14 @@ export class FloorPlan {
       return;
     }
     if (key === "escape") {
+      if (this.dragging) {
+        this.dragging = false;
+        this.dragWall = null;
+        this.dragEndpoint = null;
+        this._render();
+        this.onWallsChange();
+        return;
+      }
       this.drawing = false;
       this.selectedWallId = null;
       this._render();
@@ -377,6 +431,31 @@ export class FloorPlan {
   }
 
   _onSelectDown(mx, my) {
+    if (this.selectedWallId !== null) {
+      const selWall = this.walls.find((w) => w.id === this.selectedWallId);
+      if (selWall) {
+        const handle = this._hitHandle(mx, my, selWall);
+        if (handle) {
+          this.dragging = true;
+          this.dragWall = selWall;
+          this.dragEndpoint = handle;
+          const mw = this._canvasToWorld(mx, my);
+          this.dragStartMX = mw.x;
+          this.dragStartMZ = mw.z;
+          return;
+        }
+        const hit = this._hitWallWithPos(mx, my);
+        if (hit && hit.wall.id === this.selectedWallId) {
+          this.dragging = true;
+          this.dragWall = selWall;
+          this.dragEndpoint = 0;
+          const mw = this._canvasToWorld(mx, my);
+          this.dragStartMX = mw.x;
+          this.dragStartMZ = mw.z;
+          return;
+        }
+      }
+    }
     const idx = this._hitWall(mx, my);
     this.selectedWallId = idx >= 0 ? this.walls[idx].id : null;
     this._render();
@@ -496,6 +575,18 @@ export class FloorPlan {
       if (dist < threshold) return { wall: w, t, dist };
     }
     return null;
+  }
+
+  _hitHandle(mx, my, wall) {
+    const radius = 14;
+    for (const [idx, wx, wz] of [
+      [1, wall.x1, wall.z1],
+      [2, wall.x2, wall.z2],
+    ]) {
+      const p = this._worldToCanvas(wx, wz);
+      if (Math.hypot(mx - p.x, my - p.y) < radius) return idx;
+    }
+    return 0;
   }
 
   // ----- Renderizacao -----
