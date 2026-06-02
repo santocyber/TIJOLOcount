@@ -42,6 +42,7 @@ export class FloorPlan {
     this.mouseZ = 0;
 
     this.selectedWallIds = new Set();
+    this._wallLabelBoxes = [];
 
     this.dragging = false;
     this.dragEndpoint = null;
@@ -314,6 +315,17 @@ export class FloorPlan {
     return { x: wx, z: wz };
   }
 
+  _eventToCanvas(e) {
+    const rect = this.canvas.getBoundingClientRect();
+    const scaleX = this.canvas.width / rect.width;
+    const scaleY = this.canvas.height / rect.height;
+
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY,
+    };
+  }
+
   _worldToCanvas(wx, wz) {
     const cx = this.canvas.width / 2 + this.offsetX + wx * this.scale;
     const cy = this.canvas.height / 2 + this.offsetY - wz * this.scale;
@@ -321,6 +333,8 @@ export class FloorPlan {
   }
 
   _onMouseDown(e) {
+    const p = this._eventToCanvas(e);
+
     if (e.button === 1 || e.button === 2 || (e.button === 0 && e.ctrlKey)) {
       this.panning = true;
       this.panStartX = e.clientX;
@@ -333,7 +347,7 @@ export class FloorPlan {
 
     this._shiftKey = e.shiftKey;
 
-    const cPos = this._canvasToWorld(e.offsetX, e.offsetY);
+    const cPos = this._canvasToWorld(p.x, p.y);
     const snapped = this._applyAllSnaps(cPos.x, cPos.z);
     const sx = snapped.x;
     const sz = snapped.z;
@@ -346,15 +360,17 @@ export class FloorPlan {
         this._onRectDown(sx, sz);
         break;
       case "delete":
-        this._onDeleteDown(e.offsetX, e.offsetY);
+        this._onDeleteDown(p.x, p.y);
         break;
       case "select":
-        this._onSelectDown(e.offsetX, e.offsetY);
+        this._onSelectDown(p.x, p.y);
         break;
     }
   }
 
   _onMouseMove(e) {
+    const p = this._eventToCanvas(e);
+
     if (this.panning) {
       this.offsetX = this.panOffsetStartX + (e.clientX - this.panStartX);
       this.offsetY = this.panOffsetStartY + (e.clientY - this.panStartY);
@@ -363,7 +379,7 @@ export class FloorPlan {
     }
 
     if (this._dragCutout && this._dragCutoutWall && this._dragCutoutData) {
-      const cPos = this._canvasToWorld(e.offsetX, e.offsetY);
+      const cPos = this._canvasToWorld(p.x, p.y);
       const snapped = this._applyAllSnaps(cPos.x, cPos.z);
       const wall = this._dragCutoutWall;
       const dx = wall.x2 - wall.x1;
@@ -382,7 +398,7 @@ export class FloorPlan {
         ? new Set(this._dragWalls.map((w) => w.id))
         : new Set([this.dragWall.id]);
 
-      const cPos = this._canvasToWorld(e.offsetX, e.offsetY);
+      const cPos = this._canvasToWorld(p.x, p.y);
       const snapped = this._applyAllSnaps(cPos.x, cPos.z, excludeIds);
 
       if (this.dragEndpoint === 0) {
@@ -418,10 +434,10 @@ export class FloorPlan {
       return;
     }
 
-    const cPos = this._canvasToWorld(e.offsetX, e.offsetY);
+    const cPos = this._canvasToWorld(p.x, p.y);
     const snapped = this._applyAllSnaps(cPos.x, cPos.z);
-    this._lastMouseX = e.offsetX;
-    this._lastMouseY = e.offsetY;
+    this._lastMouseX = p.x;
+    this._lastMouseY = p.y;
     const sx = snapped.x;
     const sz = snapped.z;
 
@@ -442,15 +458,13 @@ export class FloorPlan {
     } else if (this.mode === "select") {
       if (this.dragging || this._dragCutout) {
         cursor = "grabbing";
-      } else if (this._hitCutout(e.offsetX, e.offsetY)) {
-        cursor = "pointer";
       } else if (this.selectedWallIds.size === 1) {
         let foundHandle = false;
 
         for (const wall of this.walls) {
           if (!this.selectedWallIds.has(wall.id)) continue;
 
-          const handle = this._hitHandle(e.offsetX, e.offsetY, wall);
+          const handle = this._hitHandle(p.x, p.y, wall);
           if (handle === 1 || handle === 2) {
             cursor = "grab";
             foundHandle = true;
@@ -459,18 +473,30 @@ export class FloorPlan {
         }
 
         if (!foundHandle) {
-          const selHit = this._hitWallWithPos(e.offsetX, e.offsetY);
-          cursor =
-            selHit && this.selectedWallIds.has(selHit.wall.id)
-              ? "move"
-              : "default";
+          const labelHit = this._hitWallLabel(p.x, p.y);
+          if (labelHit) {
+            cursor = "pointer";
+          } else {
+            const selHit = this._hitWallWithPos(p.x, p.y);
+            if (selHit && this.selectedWallIds.has(selHit.wall.id)) {
+              cursor = "move";
+            } else if (selHit || this._hitCutout(p.x, p.y)) {
+              cursor = "pointer";
+            }
+          }
         }
-      } else if (this.selectedWallIds.size > 1) {
-        const selHit = this._hitWallWithPos(e.offsetX, e.offsetY);
-        cursor =
-          selHit && this.selectedWallIds.has(selHit.wall.id)
-            ? "move"
-            : "default";
+      } else {
+        const labelHit = this._hitWallLabel(p.x, p.y);
+        if (labelHit) {
+          cursor = "pointer";
+        } else {
+          const selHit = this._hitWallWithPos(p.x, p.y);
+          if (selHit && this.selectedWallIds.has(selHit.wall.id)) {
+            cursor = "move";
+          } else if (selHit || this._hitCutout(p.x, p.y)) {
+            cursor = "pointer";
+          }
+        }
       }
     }
 
@@ -513,8 +539,9 @@ export class FloorPlan {
 
   _onWheel(e) {
     e.preventDefault();
+    const p = this._eventToCanvas(e);
     const zoom = e.deltaY > 0 ? 0.9 : 1.1;
-    this._zoomAt(zoom, e.offsetX, e.offsetY);
+    this._zoomAt(zoom, p.x, p.y);
   }
 
   zoomIn() {
@@ -639,29 +666,54 @@ export class FloorPlan {
 
   _hitCutout(mx, my) {
     const pos = this._canvasToWorld(mx, my);
+    const threshold = Math.max(0.04, Math.min(0.16, 6 / this.scale));
+
+    let best = null;
+    let bestDist = Infinity;
+
     for (const wall of this.walls) {
-      const wlen = Math.hypot(wall.x2 - wall.x1, wall.z2 - wall.z1);
-      if (!wlen) continue;
+      const wdx = wall.x2 - wall.x1;
+      const wdz = wall.z2 - wall.z1;
+      const wlen = Math.hypot(wdx, wdz);
+
+      if (!wlen || !wall.cutouts || !wall.cutouts.length) continue;
+
       for (const c of wall.cutouts) {
-        const t1 = c.position / wlen;
-        const t2 = (c.position + c.width) / wlen;
-        const cx1 = wall.x1 + (wall.x2 - wall.x1) * t1;
-        const cz1 = wall.z1 + (wall.z2 - wall.z1) * t1;
-        const cx2 = wall.x1 + (wall.x2 - wall.x1) * t2;
-        const cz2 = wall.z1 + (wall.z2 - wall.z1) * t2;
+        const start = Math.max(0, c.position || 0);
+        const width = Math.max(0, c.width || 0);
+        const end = Math.min(wlen, start + width);
+
+        if (end <= start) continue;
+
+        const t1 = start / wlen;
+        const t2 = end / wlen;
+
+        const cx1 = wall.x1 + wdx * t1;
+        const cz1 = wall.z1 + wdz * t1;
+        const cx2 = wall.x1 + wdx * t2;
+        const cz2 = wall.z1 + wdz * t2;
+
         const dx = cx2 - cx1;
         const dz = cz2 - cz1;
-        const nx = -dz;
-        const nz = dx;
-        const nl = Math.hypot(nx, nz) || 1;
-        const along = ((pos.x - cx1) * dx + (pos.z - cz1) * dz) / (wlen * wlen);
-        const across = ((pos.x - cx1) * nx + (pos.z - cz1) * nz) / (nl * nl);
-        if (along >= 0 && along <= 1 && Math.abs(across) <= 0.35 / nl) {
-          return { wall, cutout: c };
+        const len2 = dx * dx + dz * dz;
+
+        if (len2 < 0.000001) continue;
+
+        const u = ((pos.x - cx1) * dx + (pos.z - cz1) * dz) / len2;
+        if (u < 0 || u > 1) continue;
+
+        const px = cx1 + u * dx;
+        const pz = cz1 + u * dz;
+        const dist = Math.hypot(pos.x - px, pos.z - pz);
+
+        if (dist <= threshold && dist < bestDist) {
+          bestDist = dist;
+          best = { wall, cutout: c, dist };
         }
       }
     }
-    return null;
+
+    return best;
   }
 
   _onDrawDown(sx, sz) {
@@ -715,6 +767,25 @@ export class FloorPlan {
       }
     }
 
+    const labelWall = this._hitWallLabel(mx, my);
+    if (labelWall) {
+      this.selectedCutoutId = null;
+
+      if (shift) {
+        if (this.selectedWallIds.has(labelWall.id)) {
+          this.selectedWallIds.delete(labelWall.id);
+        } else {
+          this.selectedWallIds.add(labelWall.id);
+        }
+      } else {
+        this.selectedWallIds.clear();
+        this.selectedWallIds.add(labelWall.id);
+      }
+
+      this._render();
+      return;
+    }
+
     if (!shift && this.selectedWallIds.size > 0) {
       const hit = this._hitWallWithPos(mx, my);
 
@@ -749,6 +820,31 @@ export class FloorPlan {
       }
     }
 
+    if (this.selectedCutoutId !== null) {
+      this.selectedCutoutId = null;
+    }
+
+    const idx = this._hitWall(mx, my);
+
+    if (idx >= 0) {
+      const wallId = this.walls[idx].id;
+      this.selectedCutoutId = null;
+
+      if (shift) {
+        if (this.selectedWallIds.has(wallId)) {
+          this.selectedWallIds.delete(wallId);
+        } else {
+          this.selectedWallIds.add(wallId);
+        }
+      } else {
+        this.selectedWallIds.clear();
+        this.selectedWallIds.add(wallId);
+      }
+
+      this._render();
+      return;
+    }
+
     const cutHit = this._hitCutout(mx, my);
     if (cutHit && !shift) {
       this.selectedWallIds.clear();
@@ -760,28 +856,8 @@ export class FloorPlan {
       return;
     }
 
-    if (this.selectedCutoutId !== null) {
-      this.selectedCutoutId = null;
-    }
-
-    const idx = this._hitWall(mx, my);
-
-    if (shift) {
-      if (idx >= 0) {
-        const wallId = this.walls[idx].id;
-
-        if (this.selectedWallIds.has(wallId)) {
-          this.selectedWallIds.delete(wallId);
-        } else {
-          this.selectedWallIds.add(wallId);
-        }
-      }
-    } else {
+    if (!shift) {
       this.selectedWallIds.clear();
-
-      if (idx >= 0) {
-        this.selectedWallIds.add(this.walls[idx].id);
-      }
     }
 
     this._render();
@@ -1141,22 +1217,58 @@ export class FloorPlan {
 
   _hitWallWithPos(mx, my) {
     const pos = this._canvasToWorld(mx, my);
-    const threshold = 0.5 / this.scale + 0.3;
+    const threshold = Math.max(0.04, Math.min(0.20, 8 / this.scale));
+
+    let best = null;
+    let bestScore = Infinity;
 
     for (let i = this.walls.length - 1; i >= 0; i--) {
       const w = this.walls[i];
       const dx = w.x2 - w.x1;
       const dz = w.z2 - w.z1;
       const len2 = dx * dx + dz * dz;
+
       if (len2 === 0) continue;
 
       let t = ((pos.x - w.x1) * dx + (pos.z - w.z1) * dz) / len2;
       t = Math.max(0, Math.min(1, t));
+
       const cx = w.x1 + t * dx;
       const cz = w.z1 + t * dz;
       const dist = Math.hypot(pos.x - cx, pos.z - cz);
-      if (dist < threshold) return { wall: w, t, dist };
+
+      if (dist <= threshold) {
+        let score = dist;
+
+        if (this.selectedWallIds.has(w.id)) score -= 0.01;
+        if (w.type === "half_wall") score -= 0.005;
+
+        if (score < bestScore) {
+          bestScore = score;
+          best = { wall: w, t, dist };
+        }
+      }
     }
+
+    return best;
+  }
+
+  _hitWallLabel(mx, my) {
+    if (!this._wallLabelBoxes || !this._wallLabelBoxes.length) return null;
+
+    for (let i = this._wallLabelBoxes.length - 1; i >= 0; i--) {
+      const box = this._wallLabelBoxes[i];
+
+      if (
+        mx >= box.x &&
+        mx <= box.x + box.w &&
+        my >= box.y &&
+        my <= box.y + box.h
+      ) {
+        return box.wall;
+      }
+    }
+
     return null;
   }
 
@@ -1175,9 +1287,14 @@ export class FloorPlan {
   // ----- Renderizacao -----
 
   _resize() {
+    const rect = this.canvas.getBoundingClientRect();
     const parent = this.canvas.parentElement;
-    this.canvas.width = parent.clientWidth;
-    this.canvas.height = parent.clientHeight;
+
+    const width = rect.width || (parent ? parent.clientWidth : this.canvas.clientWidth);
+    const height = rect.height || (parent ? parent.clientHeight : this.canvas.clientHeight);
+
+    this.canvas.width = Math.max(1, Math.round(width));
+    this.canvas.height = Math.max(1, Math.round(height));
   }
 
   _centerView() {
@@ -1434,8 +1551,13 @@ export class FloorPlan {
   }
 
   _drawLabels() {
-    this.ctx.fillStyle = "#aaa";
-    this.ctx.font = "13px monospace";
+    const ctx = this.ctx;
+    this._wallLabelBoxes = [];
+
+    ctx.save();
+    ctx.fillStyle = "#aaa";
+    ctx.font = "13px monospace";
+    ctx.textBaseline = "alphabetic";
 
     for (const wall of this.walls) {
       const p1 = this._worldToCanvas(wall.x1, wall.z1);
@@ -1454,26 +1576,76 @@ export class FloorPlan {
       const angleStr = (deg < 0 ? deg + 360 : deg).toFixed(0) + "\u00b0";
       const lbl = wall.label || len.toFixed(2) + " m  " + angleStr;
 
-      this.ctx.textAlign = "center";
-      this.ctx.fillText(lbl, mx + (nx / nLen) * 20, my + (ny / nLen) * 20);
+      const labelX = mx + (nx / nLen) * 20;
+      const labelY = my + (ny / nLen) * 20;
+
+      ctx.fillStyle = "#aaa";
+      ctx.font = "13px monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "alphabetic";
+      ctx.fillText(lbl, labelX, labelY);
+
+      const idText = "#" + wall.id;
+      const idX = mx + (nx / nLen) * 44;
+      const idY = my + (ny / nLen) * 44;
+
+      ctx.font = "12px monospace";
+      const metrics = ctx.measureText(idText);
+      const boxW = metrics.width + 12;
+      const boxH = 18;
+      const boxX = idX - boxW / 2;
+      const boxY = idY - boxH / 2;
+      const isSelected = this.selectedWallIds.has(wall.id);
+
+      ctx.fillStyle = isSelected
+        ? "rgba(233, 69, 96, 0.92)"
+        : "rgba(20, 20, 45, 0.92)";
+
+      ctx.strokeStyle = wall.type === "half_wall"
+        ? "#4da6ff"
+        : wall.type === "external"
+          ? "#d28250"
+          : "#8c8c8c";
+
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.rect(boxX, boxY, boxW, boxH);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = "#ffffff";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(idText, idX, idY);
+
+      this._wallLabelBoxes.push({
+        wall,
+        x: boxX,
+        y: boxY,
+        w: boxW,
+        h: boxH,
+      });
     }
 
-    // Info bar
     const modeLabels = {
       draw: "Desenhar (D)",
       rect: "Retangulo (R)",
       select: "Selecionar (S)",
       delete: "Apagar (X)",
     };
-    this.ctx.fillStyle = "#555";
-    this.ctx.font = "11px sans-serif";
-    this.ctx.textAlign = "left";
+
+    ctx.fillStyle = "#555";
+    ctx.font = "11px sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+
     const halfNote = this.halfwallMode ? " | MEIA PAREDE" : "";
     const selNote =
       this.selectedWallIds.size > 1
         ? " | " + this.selectedWallIds.size + " sel"
         : "";
-    this.ctx.fillText(
+
+    ctx.fillText(
       (modeLabels[this.mode] || this.mode) + halfNote + selNote +
         " | Snap: " +
         (this.snapSize * 100).toFixed(0) +
@@ -1487,6 +1659,8 @@ export class FloorPlan {
       10,
       this.canvas.height - 10,
     );
+
+    ctx.restore();
   }
 
   exportSVG() {
