@@ -23,6 +23,8 @@ Aplicacao web em Flask que calcula a quantidade de tijolos e materiais necessari
 - Snap magnetico a cantos e ponto medio de paredes (tecla M / checkbox "Ímã")
 - Visualizacao de cortes (portas/janelas) no canvas 2D
 - Visualizacao de camadas de referencia com cores translucidas
+- Seletor de luz final na animacao (Nascer do Sol / Meio Dia / Por do Sol)
+- Iluminacao balanceada com HemisphereLight no viewer 3D principal
 
 ## Tecnologias
 

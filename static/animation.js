@@ -79,6 +79,8 @@ export class BrickAnimator {
     this._sunCycleOnly = false;
     this._sunCycleDuration = 20;
     this._sunCycleStartTime = 0;
+    this._sunTarget = 1.0;
+    this._brickDuration = 20;
 
     // Grid
     const grid = new THREE.GridHelper(16, 16, 0x333355, 0x1a1a33);
@@ -108,6 +110,10 @@ export class BrickAnimator {
     this._cleanupInstances();
     this.positions = positions;
     this.totalBricks = positions.length;
+    this._brickDuration = Math.max(
+      1,
+      this.totalBricks / (this.bricksPerFrame * 60),
+    );
     this.currentIndex = 0;
     this._brickAccum = 0;
     this.running = false;
@@ -293,6 +299,10 @@ export class BrickAnimator {
     this._sunHeading = deg * Math.PI / 180;
   }
 
+  setSunTarget(target) {
+    this._sunTarget = target;
+  }
+
   _updateSun(progress) {
     const phi = progress * Math.PI;
     const cx = this._sunCenter.x;
@@ -395,7 +405,8 @@ export class BrickAnimator {
       this._updateSun(p);
       if (p >= 1.0) this._sunCycleOnly = false;
     } else if (this.totalBricks > 0) {
-      this._updateSun(this.currentIndex / this.totalBricks);
+      const brickP = this.currentIndex / this.totalBricks;
+      this._updateSun(Math.min(brickP, 1.0) * this._sunTarget);
     }
     this.renderer.render(this.scene, this.camera);
   }

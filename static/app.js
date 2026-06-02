@@ -83,13 +83,15 @@ let grid = new THREE.GridHelper(16, 16, 0x444466, 0x222244);
 grid.position.y = 0.005;
 scene.add(grid);
 
-scene.add(new THREE.AmbientLight(0x666688, 1.3));
-const dirLight = new THREE.DirectionalLight(0xffffff, 2.5);
+scene.add(new THREE.HemisphereLight(0x8899cc, 0x334466, 0.8));
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.8);
 dirLight.position.set(10, 15, 10);
 dirLight.castShadow = true;
 dirLight.shadow.mapSize.set(1024, 1024);
 scene.add(dirLight);
-scene.add(new THREE.DirectionalLight(0x8888ff, 0.5).translateY(5));
+const fillLight = new THREE.DirectionalLight(0xffddaa, 0.6);
+fillLight.position.set(-8, 5, -8);
+scene.add(fillLight);
 
 scene.add(new THREE.AxesHelper(2));
 
@@ -354,6 +356,10 @@ function openModal() {
   document.addEventListener("keydown", onModalKey);
   const container = document.getElementById("modal-container");
   modalAnimator = new BrickAnimator(container, { bricksPerFrame: 5 });
+  const sunTarget = parseFloat(
+    document.getElementById("sun-preset-select").value,
+  );
+  modalAnimator.setSunTarget(sunTarget);
   document.getElementById("modal-progress-fill").style.width = "0%";
   document.getElementById("modal-progress-text").textContent = "Preparando...";
   document.getElementById("modal-progress").classList.add("active");
@@ -401,17 +407,28 @@ document.getElementById("btn-repeat").addEventListener("click", () => {
   modalAnimator.start(modalOnProgress, modalOnComplete);
 });
 document.getElementById("speed-select").addEventListener("change", (e) => {
-  if (modalAnimator) modalAnimator.bricksPerFrame = parseFloat(e.target.value);
+  if (modalAnimator) {
+    modalAnimator.bricksPerFrame = parseFloat(e.target.value);
+    modalAnimator._brickDuration = Math.max(
+      1,
+      modalAnimator.totalBricks / (modalAnimator.bricksPerFrame * 60),
+    );
+  }
 });
 document.getElementById("modal-overlay").addEventListener("click", closeModal);
 
 document.getElementById("btn-sun-repeat").addEventListener("click", () => {
   if (!modalAnimator) return;
-  modalAnimator.startSunCycleOnly(20);
+  modalAnimator.startSunCycleOnly(modalAnimator._brickDuration || 20);
 });
 document.getElementById("sun-dir-select").addEventListener("change", (e) => {
   if (modalAnimator) modalAnimator.setSunHeading(parseFloat(e.target.value));
 });
+document
+  .getElementById("sun-preset-select")
+  .addEventListener("change", (e) => {
+    if (modalAnimator) modalAnimator.setSunTarget(parseFloat(e.target.value));
+  });
 
 // ----- Toolbar -----
 const btnDraw = document.getElementById("btn-draw");
