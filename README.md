@@ -30,6 +30,11 @@ Aplicacao web em Flask que calcula a quantidade de tijolos e materiais necessari
 - Shift+Click multi-selecao de paredes (mover/apagar/alternar tipo em lote)
 - Botoes de zoom +/- no canvas 2D (zoom-to-cursor)
 - Tijolos cortados no final da parede na animacao (sem gaps nem protrusao)
+- Selecao, movimentacao e delecao de portas/janelas no canvas 2D
+- Botao Espelhar (toggle) para inverter o layout no viewer 3D (apenas eixo X)
+- Divisao automatica de paredes nos cruzamentos ao desenhar
+- Raio adaptativo do handle conforme zoom + zoom maximo 500%
+- Fontes maiores (13px) para labels de parede
 
 ## Tecnologias
 

@@ -13,6 +13,7 @@ let lastBrickPositions = [];
 let lastBrickDims = null;
 let currentModel = null;
 let modalAnimator = null;
+let mirrorMode = false;
 
 // ----- Three.js -----
 const viewerEl = document.getElementById("viewer-container");
@@ -573,6 +574,12 @@ document
     floorplan.setEndpointSnapEnabled(e.target.checked);
     autoSave();
   });
+document.getElementById("btn-mirror").addEventListener("click", () => {
+  mirrorMode = !mirrorMode;
+  document.getElementById("btn-mirror").classList.toggle("active", mirrorMode);
+  saveCurrentWalls();
+  doGenerate();
+});
 document.getElementById("btn-clear").addEventListener("click", () => {
   floorplan.clear();
   layers[currentLayerIdx].walls = [];
@@ -702,7 +709,26 @@ function scheduleGenerate() {
 }
 
 async function doGenerate() {
-  const allLayers = allLayersData();
+  let allLayers = allLayersData();
+
+  if (mirrorMode) {
+    const walls = allLayers.flatMap(l => l.walls);
+    if (walls.length > 0) {
+      let minX = Infinity, maxX = -Infinity;
+      for (const w of walls) {
+        if (w.x1 < minX) minX = w.x1; if (w.x1 > maxX) maxX = w.x1;
+        if (w.x2 < minX) minX = w.x2; if (w.x2 > maxX) maxX = w.x2;
+      }
+      const cx = (minX + maxX) / 2;
+      allLayers = allLayers.map(l => ({
+        ...l,
+        walls: l.walls.map(w => ({
+          ...w,
+          x1: 2 * cx - w.x1, x2: 2 * cx - w.x2,
+        })),
+      }));
+    }
+  }
   const hasWalls = allLayers.some((l) => l.walls.length > 0);
 
   if (!hasWalls) {

@@ -55,6 +55,12 @@ export class FloorPlan {
     this._undoMaxDepth = 50;
     this._shiftKey = false;
 
+    this.selectedCutoutId = null;
+    this._nextCutoutId = 1;
+    this._dragCutout = false;
+    this._dragCutoutWall = null;
+    this._dragCutoutData = null;
+
     this.panning = false;
     this.panStartX = 0;
     this.panStartY = 0;
@@ -115,6 +121,7 @@ export class FloorPlan {
   }
 
   setWalls(wallsData) {
+    let maxCid = 0;
     this.walls = (wallsData || []).map((w, i) => ({
       id: this.nextId++,
       x1: w.x1,
@@ -124,15 +131,22 @@ export class FloorPlan {
       height: w.height || this.wallHeight,
       type: w.type || "external",
       label: w.label || "",
-      cutouts: (w.cutouts || []).map((c) => ({
-        cutType: c.cut_type || c.cutType || "door",
-        width: c.width,
-        height: c.height,
-        position: c.position,
-        elevation: c.elevation || 0,
-      })),
+      cutouts: (w.cutouts || []).map((c) => {
+        const cid = c.cutoutId || 0;
+        if (cid > maxCid) maxCid = cid;
+        return {
+          cutoutId: cid || this._nextCutoutId++,
+          cutType: c.cut_type || c.cutType || "door",
+          width: c.width,
+          height: c.height,
+          position: c.position,
+          elevation: c.elevation || 0,
+        };
+      }),
     }));
+    this._nextCutoutId = Math.max(this._nextCutoutId, maxCid + 1);
     this.selectedWallIds.clear();
+    this.selectedCutoutId = null;
     this._undoHistory = [];
     this.drawing = false;
     this._render();
@@ -143,6 +157,30 @@ export class FloorPlan {
     this.walls = [];
     this.selectedWallIds.clear();
     this.drawing = false;
+    this._render();
+    this.onWallsChange();
+  }
+
+  mirror() {
+    if (this.walls.length === 0) return;
+    this._pushUndo();
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const w of this.walls) {
+      if (w.x1 < minX) minX = w.x1; if (w.x1 > maxX) maxX = w.x1;
+      if (w.x2 < minX) minX = w.x2; if (w.x2 > maxX) maxX = w.x2;
+      if (w.z1 < minZ) minZ = w.z1; if (w.z1 > maxZ) maxZ = w.z1;
+      if (w.z2 < minZ) minZ = w.z2; if (w.z2 > maxZ) maxZ = w.z2;
+    }
+    const cx = (minX + maxX) / 2;
+    const cz = (minZ + maxZ) / 2;
+    for (const w of this.walls) {
+      w.x1 = 2 * cx - w.x1;
+      w.x2 = 2 * cx - w.x2;
+      w.z1 = 2 * cz - w.z1;
+      w.z2 = 2 * cz - w.z2;
+    }
+    this.selectedWallIds.clear();
+    this.selectedCutoutId = null;
     this._render();
     this.onWallsChange();
   }
@@ -167,6 +205,7 @@ export class FloorPlan {
         label: w.label,
         cutouts: w.cutouts.map((c) => ({
           cutType: c.cutType,
+          cutoutId: c.cutoutId || (this._nextCutoutId = this._nextCutoutId + 1) - 1,
           width: c.width,
           height: c.height,
           position: c.position,
@@ -188,6 +227,12 @@ export class FloorPlan {
     this.nextId =
       Math.max(1, ...snapshot.walls.map((w) => w.id || 0), 0) + 1;
     this.selectedWallIds = new Set(snapshot.selectedWallIds);
+    this.selectedCutoutId = null;
+    this._nextCutoutId = Math.max(
+      1,
+      ...snapshot.walls.flatMap((w) => w.cutouts.map((c) => c.cutoutId || 0)),
+      0,
+    ) + 1;
     this._render();
     this.onWallsChange();
   }
@@ -317,15 +362,33 @@ export class FloorPlan {
       return;
     }
 
+    if (this._dragCutout && this._dragCutoutWall && this._dragCutoutData) {
+      const cPos = this._canvasToWorld(e.offsetX, e.offsetY);
+      const snapped = this._applyAllSnaps(cPos.x, cPos.z);
+      const wall = this._dragCutoutWall;
+      const dx = wall.x2 - wall.x1;
+      const dz = wall.z2 - wall.z1;
+      const wlen = Math.hypot(dx, dz);
+      if (wlen > 0.001) {
+        const t = ((snapped.x - wall.x1) * dx + (snapped.z - wall.z1) * dz) / (wlen * wlen);
+        this._dragCutoutData.position = Math.max(0, Math.min(wlen - this._dragCutoutData.width, t * wlen));
+      }
+      this._render();
+      return;
+    }
+
     if (this.dragging && this.dragWall) {
       const excludeIds = this._dragWalls
         ? new Set(this._dragWalls.map((w) => w.id))
         : new Set([this.dragWall.id]);
+
       const cPos = this._canvasToWorld(e.offsetX, e.offsetY);
       const snapped = this._applyAllSnaps(cPos.x, cPos.z, excludeIds);
-      const dx = snapped.x - this.dragStartMX;
-      const dz = snapped.z - this.dragStartMZ;
+
       if (this.dragEndpoint === 0) {
+        const dx = snapped.x - this.dragStartMX;
+        const dz = snapped.z - this.dragStartMZ;
+
         if (this._dragWalls && this._dragWalls.length > 1) {
           for (let i = 0; i < this._dragWalls.length; i++) {
             this._dragWalls[i].x1 = snapped.x + this._dragOffsets[i].x1;
@@ -338,21 +401,19 @@ export class FloorPlan {
           this.dragWall.z1 = this._dragOrigZ1 + dz;
           this.dragWall.x2 = this._dragOrigX2 + dx;
           this.dragWall.z2 = this._dragOrigZ2 + dz;
+
           if (this.endpointSnapEnabled) {
-            this._alignDragEndpoints(excludeIds);
+            this._alignDragEndpoints(excludeIds, snapped.x, snapped.z);
           }
         }
       } else if (this.dragEndpoint === 1) {
         this.dragWall.x1 = snapped.x;
         this.dragWall.z1 = snapped.z;
-        this.dragStartMX = snapped.x;
-        this.dragStartMZ = snapped.z;
-      } else {
+      } else if (this.dragEndpoint === 2) {
         this.dragWall.x2 = snapped.x;
         this.dragWall.z2 = snapped.z;
-        this.dragStartMX = snapped.x;
-        this.dragStartMZ = snapped.z;
       }
+
       this._render();
       return;
     }
@@ -364,7 +425,6 @@ export class FloorPlan {
     const sx = snapped.x;
     const sz = snapped.z;
 
-    // Cursor tracking
     this.cursorWorldX = snapped.x;
     this.cursorWorldZ = snapped.z;
 
@@ -375,34 +435,75 @@ export class FloorPlan {
     }
 
     let cursor = "default";
-    if (this.mode === "draw" || this.mode === "rect") cursor = "crosshair";
-    else if (this.mode === "delete") cursor = "pointer";
-    else if (this.mode === "select") {
-      if (this.dragging) cursor = "grabbing";
-      else if (this.selectedWallIds.size > 0) {
-        const selHit = this._hitWallWithPos(e.offsetX, e.offsetY);
-        if (selHit && this.selectedWallIds.has(selHit.wall.id)) {
-          cursor = this._hitHandle(e.offsetX, e.offsetY, selHit.wall)
-            ? "grab"
-            : "move";
-        } else {
-          cursor = "default";
+    if (this.mode === "draw" || this.mode === "rect") {
+      cursor = "crosshair";
+    } else if (this.mode === "delete") {
+      cursor = "pointer";
+    } else if (this.mode === "select") {
+      if (this.dragging || this._dragCutout) {
+        cursor = "grabbing";
+      } else if (this._hitCutout(e.offsetX, e.offsetY)) {
+        cursor = "pointer";
+      } else if (this.selectedWallIds.size === 1) {
+        let foundHandle = false;
+
+        for (const wall of this.walls) {
+          if (!this.selectedWallIds.has(wall.id)) continue;
+
+          const handle = this._hitHandle(e.offsetX, e.offsetY, wall);
+          if (handle === 1 || handle === 2) {
+            cursor = "grab";
+            foundHandle = true;
+            break;
+          }
         }
+
+        if (!foundHandle) {
+          const selHit = this._hitWallWithPos(e.offsetX, e.offsetY);
+          cursor =
+            selHit && this.selectedWallIds.has(selHit.wall.id)
+              ? "move"
+              : "default";
+        }
+      } else if (this.selectedWallIds.size > 1) {
+        const selHit = this._hitWallWithPos(e.offsetX, e.offsetY);
+        cursor =
+          selHit && this.selectedWallIds.has(selHit.wall.id)
+            ? "move"
+            : "default";
       }
     }
+
     this.canvas.style.cursor = cursor;
   }
 
   _onMouseUp() {
+    if (this._dragCutout) {
+      this._dragCutout = false;
+      this._dragCutoutWall = null;
+      this._dragCutoutData = null;
+      this._render();
+      this.onWallsChange();
+      return;
+    }
+
     if (this.dragging) {
       this.dragging = false;
       this.dragWall = null;
       this.dragEndpoint = null;
       this._dragWalls = null;
       this._dragOffsets = null;
-      this._render();
-      this.onWallsChange();
+
+      const didSplit = this._splitWallsAtIntersections(false);
+
+      if (!didSplit) {
+        this._render();
+        this.onWallsChange();
+      }
+
+      return;
     }
+
     this.panning = false;
   }
 
@@ -426,7 +527,7 @@ export class FloorPlan {
 
   _zoomAt(zoom, mx, my) {
     const newScale = this.scale * zoom;
-    if (newScale < 5 || newScale > 300) return;
+    if (newScale < 5 || newScale > 500) return;
     const cx = this.canvas.width / 2;
     const cy = this.canvas.height / 2;
     this.offsetX = (this.offsetX - (mx - cx)) * zoom + (mx - cx);
@@ -479,12 +580,32 @@ export class FloorPlan {
         this.onWallsChange();
         return;
       }
+      this._dragCutout = false;
+      this._dragCutoutWall = null;
+      this._dragCutoutData = null;
+      this.selectedCutoutId = null;
       this.drawing = false;
       this.selectedWallIds.clear();
       this._render();
       return;
     }
     if (key === "delete" || key === "backspace") {
+      if (this.selectedCutoutId !== null) {
+        this._pushUndo();
+        for (const wall of this.walls) {
+          const idx = wall.cutouts.findIndex(
+            (c) => c.cutoutId === this.selectedCutoutId,
+          );
+          if (idx >= 0) {
+            wall.cutouts.splice(idx, 1);
+            break;
+          }
+        }
+        this.selectedCutoutId = null;
+        this._render();
+        this.onWallsChange();
+        return;
+      }
       if (this.selectedWallIds.size > 0) {
         this._pushUndo();
         this.walls = this.walls.filter(
@@ -516,6 +637,33 @@ export class FloorPlan {
 
   // ----- Modos -----
 
+  _hitCutout(mx, my) {
+    const pos = this._canvasToWorld(mx, my);
+    for (const wall of this.walls) {
+      const wlen = Math.hypot(wall.x2 - wall.x1, wall.z2 - wall.z1);
+      if (!wlen) continue;
+      for (const c of wall.cutouts) {
+        const t1 = c.position / wlen;
+        const t2 = (c.position + c.width) / wlen;
+        const cx1 = wall.x1 + (wall.x2 - wall.x1) * t1;
+        const cz1 = wall.z1 + (wall.z2 - wall.z1) * t1;
+        const cx2 = wall.x1 + (wall.x2 - wall.x1) * t2;
+        const cz2 = wall.z1 + (wall.z2 - wall.z1) * t2;
+        const dx = cx2 - cx1;
+        const dz = cz2 - cz1;
+        const nx = -dz;
+        const nz = dx;
+        const nl = Math.hypot(nx, nz) || 1;
+        const along = ((pos.x - cx1) * dx + (pos.z - cz1) * dz) / (wlen * wlen);
+        const across = ((pos.x - cx1) * nx + (pos.z - cz1) * nz) / (nl * nl);
+        if (along >= 0 && along <= 1 && Math.abs(across) <= 0.35 / nl) {
+          return { wall, cutout: c };
+        }
+      }
+    }
+    return null;
+  }
+
   _onDrawDown(sx, sz) {
     if (!this.drawing) {
       this.drawing = true;
@@ -541,42 +689,79 @@ export class FloorPlan {
   _onSelectDown(mx, my) {
     const shift = this._shiftKey;
 
-    if (!shift && this.selectedWallIds.size > 0) {
-      const hit = this._hitWallWithPos(mx, my);
-      if (hit && this.selectedWallIds.has(hit.wall.id)) {
-        const handle = this._hitHandle(mx, my, hit.wall);
-        if (handle && this.selectedWallIds.size === 1) {
+    if (!shift && this.selectedWallIds.size === 1) {
+      for (const wall of this.walls) {
+        if (!this.selectedWallIds.has(wall.id)) continue;
+
+        const handle = this._hitHandle(mx, my, wall);
+
+        if (handle === 1 || handle === 2) {
           this._pushUndo();
+
           this.dragging = true;
-          this.dragWall = hit.wall;
+          this.dragWall = wall;
           this.dragEndpoint = handle;
-          const mw = this._canvasToWorld(mx, my);
-          this.dragStartMX = mw.x;
-          this.dragStartMZ = mw.z;
+
+          this._dragWalls = null;
+          this._dragOffsets = null;
+
+          this._dragOrigX1 = wall.x1;
+          this._dragOrigZ1 = wall.z1;
+          this._dragOrigX2 = wall.x2;
+          this._dragOrigZ2 = wall.z2;
+
           return;
         }
+      }
+    }
+
+    if (!shift && this.selectedWallIds.size > 0) {
+      const hit = this._hitWallWithPos(mx, my);
+
+      if (hit && this.selectedWallIds.has(hit.wall.id)) {
         this._pushUndo();
+
         this.dragging = true;
         this.dragWall = hit.wall;
         this.dragEndpoint = 0;
+
         const mw = this._canvasToWorld(mx, my);
         this.dragStartMX = mw.x;
         this.dragStartMZ = mw.z;
+
         this._dragOrigX1 = hit.wall.x1;
         this._dragOrigZ1 = hit.wall.z1;
         this._dragOrigX2 = hit.wall.x2;
         this._dragOrigZ2 = hit.wall.z2;
+
         this._dragWalls = this.walls.filter((w) =>
           this.selectedWallIds.has(w.id),
         );
+
         this._dragOffsets = this._dragWalls.map((w) => ({
           x1: w.x1 - mw.x,
           z1: w.z1 - mw.z,
           x2: w.x2 - mw.x,
           z2: w.z2 - mw.z,
         }));
+
         return;
       }
+    }
+
+    const cutHit = this._hitCutout(mx, my);
+    if (cutHit && !shift) {
+      this.selectedWallIds.clear();
+      this.selectedCutoutId = cutHit.cutout.cutoutId;
+      this._dragCutout = true;
+      this._dragCutoutWall = cutHit.wall;
+      this._dragCutoutData = cutHit.cutout;
+      this._render();
+      return;
+    }
+
+    if (this.selectedCutoutId !== null) {
+      this.selectedCutoutId = null;
     }
 
     const idx = this._hitWall(mx, my);
@@ -584,6 +769,7 @@ export class FloorPlan {
     if (shift) {
       if (idx >= 0) {
         const wallId = this.walls[idx].id;
+
         if (this.selectedWallIds.has(wallId)) {
           this.selectedWallIds.delete(wallId);
         } else {
@@ -592,14 +778,16 @@ export class FloorPlan {
       }
     } else {
       this.selectedWallIds.clear();
+
       if (idx >= 0) {
         this.selectedWallIds.add(this.walls[idx].id);
       }
     }
+
     this._render();
   }
 
-  _alignDragEndpoints(excludeIds) {
+  _alignDragEndpoints(excludeIds, mx, mz) {
     if (!this.dragWall || this.dragEndpoint !== 0) return;
     const targets = [];
     for (const w of this.walls) {
@@ -611,27 +799,215 @@ export class FloorPlan {
         targets.push({ x: w.x1, z: w.z1 }, { x: w.x2, z: w.z2 });
       }
     }
-    const thresh = this.endpointSnapThreshold * 0.8;
-    for (const [ex, ez] of [
-      [this.dragWall.x1, this.dragWall.z1],
-      [this.dragWall.x2, this.dragWall.z2],
-    ]) {
-      for (const t of targets) {
-        if (Math.hypot(ex - t.x, ez - t.z) < thresh) {
-          const sx = t.x - ex;
-          const sz = t.z - ez;
-          this.dragWall.x1 += sx;
-          this.dragWall.z1 += sz;
-          this.dragWall.x2 += sx;
-          this.dragWall.z2 += sz;
-          this.dragWall.x1 = this._snap(this.dragWall.x1);
-          this.dragWall.z1 = this._snap(this.dragWall.z1);
-          this.dragWall.x2 = this._snap(this.dragWall.x2);
-          this.dragWall.z2 = this._snap(this.dragWall.z2);
-          return;
+    const thresh = this.endpointSnapThreshold;
+    let best = null;
+    let bestDist = Infinity;
+    for (const t of targets) {
+      const d = Math.hypot(mx - t.x, mz - t.z);
+      if (d < bestDist && d < thresh) {
+        bestDist = d;
+        best = t;
+      }
+    }
+    if (!best) return;
+    const d1 = Math.hypot(this.dragWall.x1 - best.x, this.dragWall.z1 - best.z);
+    const d2 = Math.hypot(this.dragWall.x2 - best.x, this.dragWall.z2 - best.z);
+    const [ex, ez] =
+      d1 <= d2 ? [this.dragWall.x1, this.dragWall.z1] : [this.dragWall.x2, this.dragWall.z2];
+    const sx = best.x - ex;
+    const sz = best.z - ez;
+    this.dragWall.x1 += sx; this.dragWall.z1 += sz;
+    this.dragWall.x2 += sx; this.dragWall.z2 += sz;
+    this.dragWall.x1 = this._snap(this.dragWall.x1);
+    this.dragWall.z1 = this._snap(this.dragWall.z1);
+    this.dragWall.x2 = this._snap(this.dragWall.x2);
+    this.dragWall.z2 = this._snap(this.dragWall.z2);
+  }
+
+  _getIntersection(a, b) {
+    const dax = a.x2 - a.x1;
+    const daz = a.z2 - a.z1;
+    const dbx = b.x2 - b.x1;
+    const dbz = b.z2 - b.z1;
+    const cross = dax * dbz - daz * dbx;
+    if (Math.abs(cross) < 1e-8) return null;
+    const dx = b.x1 - a.x1;
+    const dz = b.z1 - a.z1;
+    const t = (dx * dbz - dz * dbx) / cross;
+    const u = (dx * daz - dz * dax) / cross;
+    if (t < 0 || t > 1 || u < 0 || u > 1) return null;
+    return { t, u, x: a.x1 + t * dax, z: a.z1 + t * daz };
+  }
+
+  _splitWallsAtIntersections(recordUndo = true) {
+    if (this.walls.length < 2) return false;
+
+    const eps = 0.001;
+    const splitMap = new Map();
+
+    const addSplitPoint = (wall, point) => {
+      const dx = wall.x2 - wall.x1;
+      const dz = wall.z2 - wall.z1;
+      const len2 = dx * dx + dz * dz;
+
+      if (len2 < eps * eps) return;
+
+      const t = ((point.x - wall.x1) * dx + (point.z - wall.z1) * dz) / len2;
+
+      if (t <= eps || t >= 1 - eps) return;
+
+      const x = wall.x1 + t * dx;
+      const z = wall.z1 + t * dz;
+
+      if (!splitMap.has(wall.id)) splitMap.set(wall.id, []);
+
+      const exists = splitMap
+        .get(wall.id)
+        .some((p) => Math.hypot(p.x - x, p.z - z) < eps);
+
+      if (!exists) {
+        splitMap.get(wall.id).push({ x, z });
+      }
+    };
+
+    const addColinearSplits = (a, b) => {
+      const adx = a.x2 - a.x1;
+      const adz = a.z2 - a.z1;
+      const bdx = b.x2 - b.x1;
+      const bdz = b.z2 - b.z1;
+
+      const crossDir = adx * bdz - adz * bdx;
+      if (Math.abs(crossDir) > eps) return;
+
+      const crossStart = adx * (b.z1 - a.z1) - adz * (b.x1 - a.x1);
+      if (Math.abs(crossStart) > eps) return;
+
+      addSplitPoint(a, { x: b.x1, z: b.z1 });
+      addSplitPoint(a, { x: b.x2, z: b.z2 });
+      addSplitPoint(b, { x: a.x1, z: a.z1 });
+      addSplitPoint(b, { x: a.x2, z: a.z2 });
+    };
+
+    for (let i = 0; i < this.walls.length; i++) {
+      for (let j = i + 1; j < this.walls.length; j++) {
+        const a = this.walls[i];
+        const b = this.walls[j];
+        const p = this._getIntersection(a, b);
+
+        if (p) {
+          addSplitPoint(a, { x: p.x, z: p.z });
+          addSplitPoint(b, { x: p.x, z: p.z });
+        } else {
+          addColinearSplits(a, b);
         }
       }
     }
+
+    if (splitMap.size === 0) return false;
+
+    if (recordUndo) this._pushUndo();
+
+    const toRemove = new Set();
+    const toAdd = [];
+
+    for (const [wallId, pts] of splitMap) {
+      const wall = this.walls.find((w) => w.id === wallId);
+      if (!wall) continue;
+
+      const dx = wall.x2 - wall.x1;
+      const dz = wall.z2 - wall.z1;
+      const len = Math.hypot(dx, dz);
+
+      if (len < eps) continue;
+
+      const ts = pts
+        .map((p) => ((p.x - wall.x1) * dx + (p.z - wall.z1) * dz) / (len * len))
+        .filter((t) => t > eps && t < 1 - eps)
+        .sort((a, b) => a - b);
+
+      const cuts = [0];
+
+      for (const t of ts) {
+        if (t - cuts[cuts.length - 1] > eps) {
+          cuts.push(t);
+        }
+      }
+
+      if (1 - cuts[cuts.length - 1] > eps) {
+        cuts.push(1);
+      }
+
+      if (cuts.length <= 2) continue;
+
+      toRemove.add(wallId);
+
+      for (let k = 0; k < cuts.length - 1; k++) {
+        const t1 = cuts[k];
+        const t2 = cuts[k + 1];
+
+        const sx1 = wall.x1 + t1 * dx;
+        const sz1 = wall.z1 + t1 * dz;
+        const sx2 = wall.x1 + t2 * dx;
+        const sz2 = wall.z1 + t2 * dz;
+
+        const partLen = Math.hypot(sx2 - sx1, sz2 - sz1);
+        if (partLen < 0.05) continue;
+
+        const segStart = t1 * len;
+        const segEnd = t2 * len;
+
+        const segCuts = (wall.cutouts || [])
+          .filter((c) => {
+            const cutStart = c.position;
+            const cutEnd = c.position + c.width;
+            return cutStart >= segStart - eps && cutEnd <= segEnd + eps;
+          })
+          .map((c) => ({
+            cutType: c.cutType,
+            cutoutId: c.cutoutId || this._nextCutoutId++,
+            width: c.width,
+            height: c.height,
+            position: c.position - segStart,
+            elevation: c.elevation,
+          }));
+
+        toAdd.push({
+          x1: sx1,
+          z1: sz1,
+          x2: sx2,
+          z2: sz2,
+          height: wall.height,
+          type: wall.type,
+          label: wall.label || "",
+          cutouts: segCuts,
+        });
+      }
+    }
+
+    if (toAdd.length === 0) return false;
+
+    this.walls = this.walls.filter((w) => !toRemove.has(w.id));
+
+    for (const w of toAdd) {
+      this.walls.push({
+        id: this.nextId++,
+        x1: w.x1,
+        z1: w.z1,
+        x2: w.x2,
+        z2: w.z2,
+        height: w.height,
+        type: w.type,
+        label: w.label,
+        cutouts: w.cutouts,
+      });
+    }
+
+    this.selectedWallIds.clear();
+    this.selectedCutoutId = null;
+    this._render();
+    this.onWallsChange();
+
+    return true;
   }
 
   _onRectDown(sx, sz) {
@@ -655,19 +1031,23 @@ export class FloorPlan {
       this._render();
       return;
     }
-    const x1 = this.startX,
-      z1 = this.startZ,
-      x2 = ex,
-      z2 = ez;
+
+    const x1 = this.startX;
+    const z1 = this.startZ;
+    const x2 = ex;
+    const z2 = ez;
     const h = this.halfwallMode ? this.wallHeight / 2 : this.wallHeight;
     const t = this.halfwallMode ? "half_wall" : "external";
+
     this._pushUndo();
+
     const walls = [
       { x1: x1, z1: z1, x2: x2, z2: z1, type: t },
       { x1: x2, z1: z1, x2: x2, z2: z2, type: t },
       { x1: x2, z1: z2, x2: x1, z2: z2, type: t },
       { x1: x1, z1: z2, x2: x1, z2: z1, type: t },
     ];
+
     for (const w of walls) {
       if (Math.hypot(w.x2 - w.x1, w.z2 - w.z1) > 0.01) {
         this.walls.push({
@@ -683,9 +1063,15 @@ export class FloorPlan {
         });
       }
     }
+
     this.drawing = false;
-    this._render();
-    this.onWallsChange();
+
+    const didSplit = this._splitWallsAtIntersections(false);
+
+    if (!didSplit) {
+      this._render();
+      this.onWallsChange();
+    }
   }
 
   // ----- Finalizacao -----
@@ -699,9 +1085,12 @@ export class FloorPlan {
       this._render();
       return;
     }
+
     const h = this.halfwallMode ? this.wallHeight / 2 : this.wallHeight;
     const t = this.halfwallMode ? "half_wall" : "external";
+
     this._pushUndo();
+
     this.walls.push({
       id: this.nextId++,
       x1: this.startX,
@@ -713,9 +1102,15 @@ export class FloorPlan {
       label: "",
       cutouts: [],
     });
+
     this.drawing = false;
-    this._render();
-    this.onWallsChange();
+
+    const didSplit = this._splitWallsAtIntersections(false);
+
+    if (!didSplit) {
+      this._render();
+      this.onWallsChange();
+    }
   }
 
   _toggleWallType() {
@@ -766,7 +1161,7 @@ export class FloorPlan {
   }
 
   _hitHandle(mx, my, wall) {
-    const radius = 14;
+    const radius = Math.max(6, Math.min(12, this.scale * 0.25));
     for (const [idx, wx, wz] of [
       [1, wall.x1, wall.z1],
       [2, wall.x2, wall.z2],
@@ -1002,12 +1397,15 @@ export class FloorPlan {
         const p4 = this._worldToCanvas(cx2 + (nx / nl) * s, cz2 + (nz / nl) * s);
 
         const isDoor = c.cutType === "door";
-        const fillColor = isDoor ? "rgba(0,212,255,0.4)" : "rgba(77,166,255,0.4)";
-        const strokeColor = isDoor ? "#00d4ff" : "#4da6ff";
+        const isSel = c.cutoutId === this.selectedCutoutId;
+        const fillColor = isSel
+          ? isDoor ? "rgba(0,212,255,0.7)" : "rgba(77,166,255,0.7)"
+          : isDoor ? "rgba(0,212,255,0.4)" : "rgba(77,166,255,0.4)";
+        const strokeColor = isSel ? "#ffffff" : isDoor ? "#00d4ff" : "#4da6ff";
 
         ctx.fillStyle = fillColor;
         ctx.strokeStyle = strokeColor;
-        ctx.lineWidth = 1;
+        ctx.lineWidth = isSel ? 2 : 1;
         ctx.beginPath();
         ctx.moveTo(p1.x, p1.y);
         ctx.lineTo(p2.x, p2.y);
@@ -1024,13 +1422,20 @@ export class FloorPlan {
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText(isDoor ? "P" : "J", midX, midY);
+
+        if (isSel) {
+          ctx.fillStyle = "#ffffff";
+          ctx.beginPath();
+          ctx.arc(midX, midY, 5, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
     }
   }
 
   _drawLabels() {
     this.ctx.fillStyle = "#aaa";
-    this.ctx.font = "11px monospace";
+    this.ctx.font = "13px monospace";
 
     for (const wall of this.walls) {
       const p1 = this._worldToCanvas(wall.x1, wall.z1);
