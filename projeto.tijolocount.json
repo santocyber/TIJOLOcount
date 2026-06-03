@@ -1,0 +1,276 @@
+{
+  "version": 1,
+  "brick_type": "bloco_estrutural_19x14x39",
+  "orientation": "deitado",
+  "mortar_joint": 0.01,
+  "snap_size": 0.05,
+  "endpoint_snap": true,
+  "current_layer": 0,
+  "layers": [
+    {
+      "name": "Térreo",
+      "elevation": 0,
+      "height": 2.8,
+      "walls": [
+        {
+          "x1": -3.45,
+          "z1": 1.5,
+          "x2": -2.5500000000000003,
+          "z2": 1.5,
+          "height": 1.4,
+          "type": "half_wall",
+          "label": "",
+          "cutouts": []
+        },
+        {
+          "x1": -2.5500000000000003,
+          "z1": 1.5,
+          "x2": -2.5500000000000003,
+          "z2": -1.5,
+          "height": 1.4,
+          "type": "half_wall",
+          "label": "",
+          "cutouts": []
+        },
+        {
+          "x1": -2.5405346564216837,
+          "z1": -1.5181934243702595,
+          "x2": -3.4405346564216837,
+          "z2": -1.5181934243702595,
+          "height": 1.4,
+          "type": "half_wall",
+          "label": "",
+          "cutouts": []
+        },
+        {
+          "x1": -3.45,
+          "z1": 5.15,
+          "x2": -2.5,
+          "z2": 5.15,
+          "height": 1.4,
+          "type": "half_wall",
+          "label": "",
+          "cutouts": []
+        },
+        {
+          "x1": -2.5,
+          "z1": 5.15,
+          "x2": -2.5,
+          "z2": 3.1,
+          "height": 1.4,
+          "type": "half_wall",
+          "label": "",
+          "cutouts": []
+        },
+        {
+          "x1": -2.5,
+          "z1": 3.1,
+          "x2": -3.45,
+          "z2": 3.1,
+          "height": 1.4,
+          "type": "half_wall",
+          "label": "",
+          "cutouts": []
+        },
+        {
+          "x1": 4.55,
+          "z1": 5.15,
+          "x2": 0.55,
+          "z2": 5.15,
+          "height": 2.8,
+          "type": "external",
+          "label": "",
+          "cutouts": []
+        },
+        {
+          "x1": 0.55,
+          "z1": 1.2000000000000002,
+          "x2": 4.55,
+          "z2": 1.2000000000000002,
+          "height": 2.8,
+          "type": "external",
+          "label": "",
+          "cutouts": []
+        },
+        {
+          "x1": 4.55,
+          "z1": 1.2000000000000002,
+          "x2": 4.55,
+          "z2": 5.15,
+          "height": 2.8,
+          "type": "external",
+          "label": "",
+          "cutouts": [
+            {
+              "cut_type": "window",
+              "width": 1,
+              "height": 1,
+              "position": 2.3,
+              "elevation": 1.1
+            }
+          ]
+        },
+        {
+          "x1": -3.45,
+          "z1": 5.15,
+          "x2": -2.5,
+          "z2": 5.15,
+          "height": 2.8,
+          "type": "external",
+          "label": "",
+          "cutouts": []
+        },
+        {
+          "x1": -2.5,
+          "z1": 5.15,
+          "x2": 0.5499999999999998,
+          "z2": 5.15,
+          "height": 2.8,
+          "type": "external",
+          "label": "",
+          "cutouts": [
+            {
+              "cut_type": "window",
+              "width": 1,
+              "height": 1,
+              "position": 1,
+              "elevation": 1.1
+            }
+          ]
+        },
+        {
+          "x1": 0.5499999999999998,
+          "z1": 5.15,
+          "x2": 4.55,
+          "z2": 5.15,
+          "height": 2.8,
+          "type": "external",
+          "label": "",
+          "cutouts": []
+        },
+        {
+          "x1": 4.55,
+          "z1": 1.2000000000000002,
+          "x2": 4.55,
+          "z2": -2.85,
+          "height": 2.8,
+          "type": "external",
+          "label": "",
+          "cutouts": [
+            {
+              "cut_type": "door",
+              "width": 0.8,
+              "height": 2.1,
+              "position": 2.65,
+              "elevation": 0
+            }
+          ]
+        },
+        {
+          "x1": -3.45,
+          "z1": -2.85,
+          "x2": -3.45,
+          "z2": 1.4999999999999996,
+          "height": 2.8,
+          "type": "external",
+          "label": "",
+          "cutouts": []
+        },
+        {
+          "x1": -3.45,
+          "z1": 1.4999999999999996,
+          "x2": -3.45,
+          "z2": 2.5500000000000003,
+          "height": 2.8,
+          "type": "external",
+          "label": "",
+          "cutouts": []
+        },
+        {
+          "x1": 0.55,
+          "z1": 3.0500000000000003,
+          "x2": -3.45,
+          "z2": 3.0500000000000003,
+          "height": 2.8,
+          "type": "external",
+          "label": "",
+          "cutouts": []
+        },
+        {
+          "x1": 0.55,
+          "z1": 5.15,
+          "x2": 0.55,
+          "z2": 3.0500000000000003,
+          "height": 2.8,
+          "type": "external",
+          "label": "",
+          "cutouts": []
+        },
+        {
+          "x1": -3.45,
+          "z1": 3.1,
+          "x2": -3.45,
+          "z2": 5.15,
+          "height": 2.8,
+          "type": "external",
+          "label": "",
+          "cutouts": [
+            {
+              "cut_type": "door",
+              "width": 0.8,
+              "height": 2.1,
+              "position": 0.857612161299115,
+              "elevation": 0
+            }
+          ]
+        },
+        {
+          "x1": -3.45,
+          "z1": 2.5500000000000003,
+          "x2": -3.45,
+          "z2": 2.7,
+          "height": 2.8,
+          "type": "external",
+          "label": "",
+          "cutouts": []
+        },
+        {
+          "x1": -3.45,
+          "z1": 2.7,
+          "x2": -3.45,
+          "z2": 3.0500000000000003,
+          "height": 2.8,
+          "type": "external",
+          "label": "",
+          "cutouts": []
+        },
+        {
+          "x1": 0.55,
+          "z1": 3.0500000000000003,
+          "x2": 0.55,
+          "z2": 2.7,
+          "height": 2.8,
+          "type": "external",
+          "label": "",
+          "cutouts": []
+        },
+        {
+          "x1": 0.55,
+          "z1": 2.7,
+          "x2": 0.55,
+          "z2": 1.2000000000000002,
+          "height": 2.8,
+          "type": "external",
+          "label": "",
+          "cutouts": []
+        }
+      ]
+    },
+    {
+      "name": "Andar 2",
+      "elevation": 2.8,
+      "height": 2.8,
+      "walls": []
+    }
+  ]
+}
