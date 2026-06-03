@@ -436,8 +436,9 @@ const btnDraw = document.getElementById("btn-draw");
 const btnRect = document.getElementById("btn-rect");
 const btnSelect = document.getElementById("btn-select");
 const btnDelete = document.getElementById("btn-delete");
+const btnSelectCutout = document.getElementById("btn-select-cutout");
 const btnHalfwall = document.getElementById("btn-halfwall");
-const modeButtons = [btnDraw, btnRect, btnSelect, btnDelete];
+const modeButtons = [btnDraw, btnRect, btnSelect, btnDelete, btnSelectCutout];
 
 function activateBtn(btn, mode) {
   modeButtons.forEach((b) => b.classList.remove("active"));
@@ -457,6 +458,14 @@ btnDelete.addEventListener("click", () => {
   btnHalfwall.classList.remove("active");
   floorplan.setHalfwallMode(false);
 });
+btnSelectCutout.addEventListener("click", () => {
+  deactivateCutoutMode();
+  activateBtn(btnSelectCutout, "select-cutout");
+  btnHalfwall.classList.remove("active");
+  floorplan.setHalfwallMode(false);
+  document.getElementById("status-bar").textContent =
+    "Selecione uma porta/janela no 2D, arraste para mover ou pressione Delete para apagar";
+});
 
 btnHalfwall.addEventListener("click", () => {
   const isActive = btnHalfwall.classList.toggle("active");
@@ -475,14 +484,20 @@ const btnCutWindow = document.getElementById("btn-cut-window");
 const cutButtons = [btnCutDoor, btnCutWindow];
 let cutoutActive = null;
 
+function deactivateCutoutMode() {
+  if (cutoutActive === null) return;
+  cutout3d.deactivate();
+  cutButtons.forEach((b) => b.classList.remove("active"));
+  cutoutActive = null;
+}
+
 function activateCutout(type) {
   if (cutoutActive === type) {
-    cutout3d.deactivate();
-    cutButtons.forEach((b) => b.classList.remove("active"));
-    cutoutActive = null;
+    deactivateCutoutMode();
     document.getElementById("status-bar").textContent = "";
     return;
   }
+  btnSelectCutout.classList.remove("active");
   cutButtons.forEach((b) => b.classList.remove("active"));
   cutoutActive = type;
   const btn = type === "door" ? btnCutDoor : btnCutWindow;

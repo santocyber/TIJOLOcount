@@ -30,7 +30,7 @@ Aplicacao web em Flask que calcula a quantidade de tijolos e materiais necessari
 - Shift+Click multi-selecao de paredes (mover/apagar/alternar tipo em lote)
 - Botoes de zoom +/- no canvas 2D (zoom-to-cursor)
 - Tijolos cortados no final da parede na animacao (sem gaps nem protrusao)
-- Selecao, movimentacao e delecao de portas/janelas no canvas 2D
+- Botao "Selecionar Porta e Janela" no 2D — clique para habilitar, arraste para mover, Delete/Backspace ou "Apagar" para remover
 - Botao Espelhar (toggle) para inverter o layout no viewer 3D (apenas eixo X)
 - Divisao automatica de paredes nos cruzamentos ao desenhar
 - Raio adaptativo do handle conforme zoom + zoom maximo 500%
@@ -75,10 +75,11 @@ Acesse **http://localhost:5020**
 2. Alternativamente, use a ferramenta **"Retangulo"** para criar 4 paredes de uma vez
 3. Selecione paredes existentes com a ferramenta **"Selecionar"** para move-las, arrastar suas extremidades ou deleta-las
 4. Adicione **portas e janelas** com os botoes de corte — clique sobre uma parede para posicionar
-5. Configure a **altura** das paredes, **tipo de tijolo**, **junta de argamassa** e **posicao/orientacao** do tijolo na toolbar
-6. Gerencie **camadas/andares** com os botoes `+` e `-` (cada camada tem paredes e altura independentes)
-7. Clique em **"Gerar 3D"** para visualizar o modelo, areas e quantitativos de material
-8. Use os botoes **Salvar** (JSON) e **Abrir** para persistir o projeto
+5. Use o botao **"Selecionar Porta e Janela"** para selecionar portas/janelas no canvas 2D; arraste para mover ao longo da parede ou pressione Delete/Backspace (ou ferramenta "Apagar") para remover
+6. Configure a **altura** das paredes, **tipo de tijolo**, **junta de argamassa** e **posicao/orientacao** do tijolo na toolbar
+7. Gerencie **camadas/andares** com os botoes `+` e `-` (cada camada tem paredes e altura independentes)
+8. Clique em **"Gerar 3D"** para visualizar o modelo, areas e quantitativos de material
+9. Use os botoes **Salvar** (JSON) e **Abrir** para persistir o projeto
 
 ## Tipos de Tijolo
 

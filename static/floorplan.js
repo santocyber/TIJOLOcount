@@ -365,6 +365,9 @@ export class FloorPlan {
       case "select":
         this._onSelectDown(p.x, p.y);
         break;
+      case "select-cutout":
+        this._onCutoutSelectDown(p.x, p.y);
+        break;
     }
   }
 
@@ -498,6 +501,8 @@ export class FloorPlan {
           }
         }
       }
+    } else if (this.mode === "select-cutout") {
+      cursor = this._hitCutout(p.x, p.y) ? "grab" : "default";
     }
 
     this.canvas.style.cursor = cursor;
@@ -729,6 +734,18 @@ export class FloorPlan {
   }
 
   _onDeleteDown(mx, my) {
+    const cutHit = this._hitCutout(mx, my);
+    if (cutHit) {
+      this._pushUndo();
+      cutHit.wall.cutouts = cutHit.wall.cutouts.filter(
+        (c) => c.cutoutId !== cutHit.cutout.cutoutId,
+      );
+      this.selectedCutoutId = null;
+      this._render();
+      this.onWallsChange();
+      return;
+    }
+
     const idx = this._hitWall(mx, my);
     if (idx >= 0) {
       this._pushUndo();
@@ -860,6 +877,24 @@ export class FloorPlan {
       this.selectedWallIds.clear();
     }
 
+    this._render();
+  }
+
+  _onCutoutSelectDown(mx, my) {
+    const cutHit = this._hitCutout(mx, my);
+
+    if (!cutHit) {
+      this.selectedCutoutId = null;
+      this._render();
+      return;
+    }
+
+    this._pushUndo();
+    this.selectedWallIds.clear();
+    this.selectedCutoutId = cutHit.cutout.cutoutId;
+    this._dragCutout = true;
+    this._dragCutoutWall = cutHit.wall;
+    this._dragCutoutData = cutHit.cutout;
     this._render();
   }
 
@@ -1631,6 +1666,7 @@ export class FloorPlan {
       draw: "Desenhar (D)",
       rect: "Retangulo (R)",
       select: "Selecionar (S)",
+      "select-cutout": "Selecionar Porta/Janela",
       delete: "Apagar (X)",
     };
 
