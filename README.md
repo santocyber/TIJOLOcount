@@ -69,6 +69,23 @@ Acesse **http://localhost:5020**
 
 > **Nota:** O diretorio `uploads/` e criado automaticamente ao iniciar com `python app.py`. Se usar outro servidor WSGI (ex: gunicorn), crie o diretorio manualmente.
 
+### Versao standalone (sem Python)
+
+A pasta `html/` contem uma versao 100% estatica que roda em qualquer servidor HTTP (Nginx, Apache, etc.) **sem necessidade de Python, PHP ou qualquer backend**:
+
+```bash
+# Opcao 1: Servidor HTTP embutido do Python
+cd html
+python3 -m http.server 8080
+
+# Opcao 2: Nginx (exemplo de config em html/nginx.conf)
+# Apenas aponte o root para TIJOLOcount/html
+
+# Opcao 3: Qualquer servidor estatico (apache, caddy, serve, etc.)
+```
+
+Nesta versao, o calculo de tijolos e a geracao dos modelos 3D (.glb/.stl) sao feitos inteiramente no navegador com JavaScript puro (Three.js + `GLTFExporter`/`STLExporter`).
+
 ## Como usar
 
 1. Use o canvas 2D para **desenhar paredes** clicando para definir pontos (ferramenta "Desenhar" ativa por padrao)
@@ -149,6 +166,15 @@ TIJOLOcount/
 │   ├── cutout3d.js         # Corte de portas/janelas no 3D
 │   ├── floorplan.js        # Canvas 2D para desenho de paredes
 │   └── rulers.js           # Reguas de medida no viewer
+├── html/                   # Versao standalone (100% estatica, sem Python)
+│   ├── index.html          # Interface completa (sem Flask/Jinja2)
+│   ├── nginx.conf          # Exemplo de configuracao Nginx
+│   └── static/
+│       ├── config.js       # Port de src/config.py (JavaScript)
+│       ├── calculator.js   # Port de src/calculator.py (JavaScript)
+│       ├── model_3d.js     # Port de src/model_3d.py (Three.js nativo)
+│       ├── app.js          # Sem fetch(), calculo 100% local
+│       └── ...             # floorplan.js, animation.js, etc.
 └── uploads/                # Modelos .glb/.stl gerados (temporarios)
 ```
 
